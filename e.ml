@@ -1,17 +1,23 @@
 #use "utils.ml";;
 
-
 (* TODO:
 
-* utiliser un flux de prix synthetique
 * fix range, duration: map construire la correspondance entre vol et meilleur price_inc for fixed range
 suffit-il de calculer le nb de up- et down-crossing?
-maybe needs to move to log returns log(p_{n+1}/p_{n}) instead of prices
 
-decoupler les deux lambda max et min 
+- maybe needs to move to log returns log(p_{n+1}/p_{n}) instead of prices
+
+* decoupler les deux lambda max et min 
+
+* compilation ocaml
+
+* add std to barg
+
+* mutualiser les realisation de GBM quand on enumere -eg les gridstep
+
 *)
 
-(* Brownian motions *)
+(* --------------------- BROWNIANS --------------------- *)
 let pi = 4.0 *. atan 1.0;;
 
 (* box_muller: [0,1]^2 -> R G(box_muller)(U_2) = N(0,1) *)
@@ -148,14 +154,91 @@ Array.map (fun (_,x) -> x)
 
 (* ~timestep:0.0007 = 1/1440 = once per minute if duration = 1d *)
 
+(*   
 gen_price_series 
 ~initial_value:1. ~drift:0. ~volatility:0.10 
 ~timestep:(1. /. 1440.) ~duration:0.1
+;; 
+*)
+
+
+(* generates nb_of_rays new trajectories each in separate file *)
+let gbm_sim 
+?(nb_of_rays = 1)
+?(initial_value = 1.) ?(drift = 0.01) ?(volatility = 0.01) 
+?(timestep = 1./.1440.) ?(duration = 1.)
+() = 
+for i = 1 to nb_of_rays
+do
+ let gb = gbrowmo 
+ ~initial_value:initial_value ~drift:drift ~volatility:volatility 
+ ~timestep:timestep ~duration:duration in
+ let filename = "gm/gbm2"^(string_of_float volatility)^"_"^(string_of_int i) in
+ array2_to_csv ~filename:filename ~array2:gb
+done
 ;;
+
+let gen_log_returns 
+(* outputs: array of pairs (time, log return) *)
+(* number of simulation steps = duration/dt + 1 *)
+~initial_value:ival 
+~drift:drift 
+~volatility:vol 
+~timestep:dt 
+~duration:duration = 
+  let array_of_pairs = gbrowmo 
+  ~initial_value:ival
+  ~drift:drift
+  ~volatility:vol 
+  ~timestep:dt
+  ~duration:duration in
+  Array.init  
+  (Array.length array_of_pairs)
+  (
+  fun i -> 
+    if (i = 0) 
+      then (0.,0.) 
+      else 
+        (
+        let _, pred_price = array_of_pairs.(i-1) in
+        let t, next_price = array_of_pairs.(i) in
+        t, log(next_price /. pred_price)
+        )
+  )
+;;
+
+(* given a price series creates a csv file with the log returns *)
+let log_return 
+~price_series:ps 
+~filename:filename = 
+  (*  eg filename = "csv/logret.csv"*)
+  let oc = open_out filename in
+  let l = Array.length ps in
+  (* let log_ret = Array.make (l - 1) 1. in *)
+  for i = 1 to (l - 1)
+    do  
+    (* log_ret.(i-1) <- log (ps.(i) /. ps.(i-1)); *)
+    let next = log (ps.(i) /. ps.(i-1)) in
+    output_string oc (string_of_int i);
+    output_string oc ", "; 
+    Printf.fprintf oc "%.6f" next;
+    output_string oc "\n";
+    done;
+    close_out oc
+;;
+
+(* 
+let x = gen_log_returns 
+~drift:1. ~volatility:0.05 ~duration:10. ~timestep:0.001 in
+array2_to_csv ~filename:"logret4" ~array2:x
+;; 
+*)
 
 (* given a (time,price) series generates the eta-viscous filter of the input *)
 (* vf = viscous filter *)
 (* eta is the fee *) 
+
+(* --------------------- UNISWAP --------------------- *)
 let vf 
 ~driver_series:(p:(float*float) array) 
 ~viscosity:(eta:float) = 
@@ -303,51 +386,11 @@ let fees_repeat_eta ~nb_of_rays:n ~volatility:vol =
 ;;
  
 
-(* generates nb_of_rays new trajectories each in separate file *)
-let gbm_sim 
-?(nb_of_rays = 1)
-?(initial_value = 1.) ?(drift = 0.01) ?(volatility = 0.01) 
-?(timestep = 1./.1440.) ?(duration = 1.)
-() = 
-for i = 1 to nb_of_rays
-do
- let gb = gbrowmo 
- ~initial_value:initial_value ~drift:drift ~volatility:volatility 
- ~timestep:timestep ~duration:duration in
- let filename = "gm/gbm2"^(string_of_float volatility)^"_"^(string_of_int i) in
- array2_to_csv ~filename:filename ~array2:gb
-done
-;;
-
-let gen_log_returns ~duration:duration ~drift:drift ~volatility:vol ~timestep:dt = (* steps = duration/dt + 1 *)
-  let array_of_pairs = gbrowmo 
-  ~initial_value:1. 
-  ~drift:drift
-  ~volatility:vol 
-  ~timestep:dt
-  ~duration:duration in
-  Array.init  
-  (Array.length array_of_pairs)
-  (
-  fun i -> 
-    if (i = 0) 
-      then (0.,0.) 
-      else 
-        (
-        let _, pred_price = array_of_pairs.(i-1) in
-        let t, next_price = array_of_pairs.(i) in
-        t, log(next_price /. pred_price)
-        )
-  )
-;;
-
-let x = gen_log_returns ~drift:1. ~volatility:0.05 ~duration:10. ~timestep:0.001 in
-array2_to_csv ~filename:"logret4" ~array2:x
-;;
-
 (* 
    mu' = 1 - 0.05^2/2 
    constant in log return increment = mu' * dt *)
+
+(* --------------------- UTILS --------------------- *)
 (* padded float *)
 let padded_float x pad = 
   let s = string_of_float x in
@@ -387,9 +430,6 @@ print_string "top_bid_index: "; print_int (!ib) ; print_string "\n";
 print_string "top_ask_index: "; print_int (!ia) ; print_string "\n"
 ;;  *)
 
-(* Loading price_series from a generated Borwnian mmotion *)
-(* we read nb_lines after dropping the first one *)
-
 
 (* Loading price_series from a csv file into an array *)
 (* we read nb_lines after dropping the first one *)
@@ -415,23 +455,6 @@ let price_series  =
 h ~number_of_lines:243780 ~filename:"csv/data_for_vd.csv" 
 ;;
 
-(* creates a csv file with the log returns *)
-let log_return ~price_series:ps ~filename:filename = 
-  (*  eg filename = "csv/logret.csv"*)
-  let oc = open_out filename in
-  let l = Array.length ps in
-  (* let log_ret = Array.make (l - 1) 1. in *)
-  for i = 1 to (l - 1)
-    do  
-    (* log_ret.(i-1) <- log (ps.(i) /. ps.(i-1)); *)
-    let next = log (ps.(i) /. ps.(i-1)) in
-    output_string oc (string_of_int i);
-    output_string oc ", "; 
-    Printf.fprintf oc "%.6f" next;
-    output_string oc "\n";
-    done;
-    close_out oc
-;;
 
 (* 
 let ps = Array.sub price_series 0 3;;
@@ -449,20 +472,22 @@ print_float ps.(999); print_newline ();
 (* 
 log linear price subdivision 
 we build a multiplicatively symmetric price grid centered on p0
-NB: mid >= 1, index_set >= 3
-NB: pmin >= p0 /. width and pmax <= p0 *. width because of rounding
-pmin/max = p0 * (step ** +/- mid)
+NB: mid >= 1
+NB: total number of points = index_set >= 3
+NB: pmin >= p0 /. width and pmax <= p0 *. width, not necessarily equal because of rounding
+pmin/max = p0 * (gridstep ** +/- mid)
 *)
 
 let generate_price_grid 
-~half_number_of_price_points:nb_price_points 
+~half_number_of_price_points:mid 
 ~gridstep:gridstep 
 ~initial_price:p0 = 
   Array.init 
-    (2 * nb_price_points + 1) 
-    (fun i -> let expo = float_of_int (i - nb_price_points) in
+    (2 * mid + 1) 
+    (fun i -> let expo = float_of_int (i - mid) in
               p0 *. gridstep ** (expo)) 
-(* on voit que c'est tres uniforme en p0 ;
+;;
+(* NB: on voit que c'est tres uniforme en p0 ;
    OPTIM: qd on itere le long de la price_series
    en utilisant les mêmes paramètres,
    et donc en ne changeant que le mid-price  
@@ -475,10 +500,9 @@ let generate_price_grid
    si on a aussi acces au current_volatility et la Garcheryy map step(current_vol)
    on peut aussi mettre à jour le step
 *)
-;;
 
 (* number of points for various values of gridstep *)
-(* given by log(range) /. log(gridstep);; *)
+(* given by log(rangeMultiplier) /. log(gridstep);; *)
 
 let aux ~range:lambda n = 
 (* eg lambda = 1.4 *)
@@ -550,7 +574,7 @@ done
 
 (* no need to slice the price series as the price series array is read only *)
 (* sim takes as input: 
-1) strat parameters = price grid and cash 
+1) strat parameters = price grid and capital in cash (quote, written B)
 2) price series (delimited by start and duration)
 outputs the return (the stochastic integral of strat against price)
 and number of up- and down-crossings
@@ -570,7 +594,10 @@ let index_set = 2 * mid + 1 in
 (* the initial price *)
 let p0 = price_series.(start) in
 let current_price = ref p0 in
-let price_grid = generate_price_grid mid gridstep p0 in
+let price_grid = generate_price_grid 
+~half_number_of_price_points:mid 
+~gridstep:gridstep 
+~initial_price:p0 in
 
 (* print_string "> price grid:\n "; 
 pra 12 price_grid;  print_string "\n"; *)
