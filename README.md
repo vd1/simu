@@ -1,11 +1,13 @@
 # simu
 
 
-the main file is "e.ml" it contains various functions:
+The main file is "e.ml" (ocaml) and contains various functions to "integrate" a Kandle or Uniswapv3 strategy
+against a price series (can think of it as a stochastic integral):
 
+## price series
 1. generators of price series (from data, from BM, from GBM)
 
-2. viscous filters of price series
+2. filters of price series
 
 vf = viscous filter
 
@@ -13,10 +15,28 @@ given a (time,price) series vf generates a new (time, price) series which is the
 
 eta is the viscosity (or fee)
 
-the higher eta, the more the output series lags behind the driver series [Q: is it functorial/idempotent?]
+the higher eta, the more the output series lags behind the driver series
 
-3. square root variation of prices series
 
-4. Kandel simulator
+## Univ3 strategies
+3. Square root variation of prices series
 
-5. Capital allocation function (to determine the initial partitioning of wealth in quote/base)
+4. Capital allocation function (to determine the initial partitioning of wealth in quote/base)
+
+## Kandel strategies
+5. Kandel simulator with main function "sim"
+```
+let sim 
+~tightness:width ~price_increment:gridstep ~cash:qB 
+(* when we enter game and how long we play *)
+(* NB: duration could be a stopping time in general, eg looking at a price-crossing event *)
+~start:start ~duration:duration 
+(* the future *)
+~price_series:price_series 
+= ...
+```
+sim takes as input: 
+1) strat parameters = price grid and cash 
+2) price series (delimited by start and duration)
+outputs the return (the stochastic integral of strat against price) and number of up- and down-crossings
+
