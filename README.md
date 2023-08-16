@@ -2,7 +2,7 @@
 
 
 The main file is "e.ml" (ocaml) and contains various functions to "integrate" a Kandle or Uniswapv3 strategy
-against a price series (can think of it as a stochastic integral):
+against a price series (we think of it as a stochastic integral)
 
 ## price series
 1. generators of price series (from data, from BM, from GBM)
