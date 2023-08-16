@@ -201,8 +201,9 @@ let ds = browmo ~initial_value:1. ~drift:0. ~volatility:0.1 ~timestep:0.01 ~dura
   array2_to_csv ~filename:("vs/vs4") ~array2:output4;
 ;;
 
-(*  computing variation square root given price series *)
-(* probably infinite in the limit?? *)
+(* vsr = variation square root *)
+(*  computing up/down square root variation of given price series *)
+(* NB: les fees divergent quand dt -> 0 !! *)
 let vsr (p: float array) = 
    let vsrb = ref 0. in
    let vsrq = ref 0. in
@@ -220,7 +221,7 @@ let vsr (p: float array) =
 ;;
 
 (* 
-NB: les fees divergent quand dt -> 0 !!
+fees divergence 
 # let p = gen_price_series 
 ~initial_value:1. ~drift:0. ~volatility:0.10 
 ~timestep:(1. /. 10000.) ~duration:1.
@@ -232,7 +233,8 @@ in vsr p;;
 ~timestep:(1. /. 100000.) ~duration:1.
 in vsr p;;
 - : float * float = (6.25414645146637493, 6.36145002711934549)
-─ *)
+─ 
+*)
 
 (* symmetric concentrator  *)
 let concentrator p_0 rangeMultiplier = 
@@ -240,6 +242,7 @@ let concentrator p_0 rangeMultiplier =
   let sqlambda = (sqrt rangeMultiplier) in (* > 1 *)
   0.5 *. sqlambda /. (sqlambda -. 1.0) *. 1. /. sqrt(p_0)
 ;;
+
 (* feeq = capital(quote) * eta * (concentrator p_0 rangeMultiplier) * vsrq(eta) *)
 (* feeb = capital(quote) * eta * concentrator * vsrb(eta) *)
 
@@ -299,8 +302,6 @@ let fees_repeat_eta ~nb_of_rays:n ~volatility:vol =
   array2_to_csv ~filename:filename ~array2:output
 ;;
  
-
-
 
 (* generates nb_of_rays new trajectories each in separate file *)
 let gbm_sim 
@@ -392,7 +393,7 @@ print_string "top_ask_index: "; print_int (!ia) ; print_string "\n"
 
 (* Loading price_series from a csv file into an array *)
 (* we read nb_lines after dropping the first one *)
-let h nb_lines filename = 
+let h ~number_of_lines:nb_lines ~filename:filename = 
   (* let  nb_lines =  Sys.command ("wc -l "^filename) in *)
   (* print_int nb_lines; print_newline(); *)
   let ic = open_in filename in
@@ -411,12 +412,13 @@ let h nb_lines filename =
 
 let price_series  =  
 (* h 6748 "Kandle_benchmark_data.csv"  *)
-h 243780 "csv/data_for_vd.csv" 
+h ~number_of_lines:243780 ~filename:"csv/data_for_vd.csv" 
 ;;
 
 (* creates a csv file with the log returns *)
-let log_return ps = 
-  let oc = open_out "csv/logret.csv" in
+let log_return ~price_series:ps ~filename:filename = 
+  (*  eg filename = "csv/logret.csv"*)
+  let oc = open_out filename in
   let l = Array.length ps in
   (* let log_ret = Array.make (l - 1) 1. in *)
   for i = 1 to (l - 1)
@@ -452,7 +454,10 @@ NB: pmin >= p0 /. width and pmax <= p0 *. width because of rounding
 pmin/max = p0 * (step ** +/- mid)
 *)
 
-let generate_price_grid nb_price_points gridstep p0 = 
+let generate_price_grid 
+~half_number_of_price_points:nb_price_points 
+~gridstep:gridstep 
+~initial_price:p0 = 
   Array.init 
     (2 * nb_price_points + 1) 
     (fun i -> let expo = float_of_int (i - nb_price_points) in
@@ -472,17 +477,28 @@ let generate_price_grid nb_price_points gridstep p0 =
 *)
 ;;
 
-let aux n = 
-for i = 1 to n do 
-let gridstep = 1. +. 0.001 *. (float_of_int n) in
-print_int(int_of_float (log(1.4) /. log(gridstep)));
-print_char ','
+(* number of points for various values of gridstep *)
+(* given by log(range) /. log(gridstep);; *)
+
+let aux ~range:lambda n = 
+(* eg lambda = 1.4 *)
+print_string "nb of points on half grid: ";
+for i = 1 to n 
+do 
+let gridstep = 1. +. 0.001 *. (float_of_int i) in
+print_int(int_of_float (log(lambda) /. log(gridstep)));
+(* log(lambda)/log(ratio) = nb_of_points *)
+print_string ", ";
 done
 ;;
 
 (* capital in A and B is distributed uniformly on both sides *)
 (* we don't fill the central slot = hole *)  
-let populate_book mid qA qB pg = 
+let populate_book 
+~half_number_of_price_points:mid 
+~baseAmount:qA 
+~quoteAmount:qB 
+~price_point_series:pg = 
     let index_set  = 2 * mid + 1 in
     let bid = Array.make index_set 0. 
     and ask = Array.make index_set 0. 
@@ -522,7 +538,6 @@ let portfolio_A mid iia ask =
   !res 
 ;;
 
-(* let geo width step = log(width) /. log(step);; *)
 
 (* let step =  1.1 in 
 for i = 0 to 10
@@ -534,6 +549,12 @@ done
 ;; *)
 
 (* no need to slice the price series as the price series array is read only *)
+(* sim takes as input: 
+1) strat parameters = price grid and cash 
+2) price series (delimited by start and duration)
+outputs the return (the stochastic integral of strat against price)
+and number of up- and down-crossings
+*)
 let sim 
 (* the parameters chosen = shape of the investment decision *)
 ~tightness:width ~price_increment:gridstep ~cash:qB 
@@ -558,7 +579,13 @@ pra 12 price_grid;  print_string "\n"; *)
 let qB' = 0.5 *. qB in
 let qA =  qB' /. p0 in
 (* state: dynamic part *)
-let ia, ib, ask, bid = populate_book mid qA qB' price_grid in
+let ia, ib, ask, bid = 
+populate_book 
+~half_number_of_price_points:mid 
+~baseAmount:qA 
+~quoteAmount:qB' 
+~price_point_series:price_grid
+in
 
 (* pra 12 bid; print_string "\n";
 print_float (portfolio_B mid bid price_grid); print_newline();
@@ -710,14 +737,20 @@ bundle_sim ~start:0 ~duration:40_000 ~repetitions:6
 ;;
 
 (* resolution of gridsteps tested > 0 *)
-(* max gridstep *)
-let g 
-~pictick:tick ~maxpic:maxpic ~tightness:tight
+(* gridstep = price increment = pic *)
+(* inputs: gridstep sampling parameters, GBM parameters *)
+(* iterating over gridsteps one with increment tick until maxpic *)
+(* range is a range multiplier really *)
+(* outputs: array of (gridstep, return, crossings)   *)
+(* NB: range too wide -> reduction of capital -> loss of return *)
+
+let gridsampling 
+~pictick:tick ~maxpic:maxpic ~tightness:range
 ~initial_value:ival ~drift:drift ~volatility:vol 
 ~timestep:dt ~duration:duration = 
   assert (tick >= 0.001);
   assert (maxpic >= tick);
-  assert (maxpic <= tight);
+  assert (maxpic <= range);
   let ps = 
     gen_price_series  
     ~initial_value:ival ~drift:drift ~volatility:vol 
@@ -729,12 +762,12 @@ let g
   for i = 1 to nbs 
       do
       let pic = (1. +. (float_of_int i) *. tick) in (* we choose a gridstep *)
-      if (pic < tight) 
+      if (pic < range) 
         then
           (
           let r, u, d = 
           sim 
-          ~tightness:tight (* we fix the tightness to vary the price increment *)
+          ~tightness:range (* we fix the range and vary the price increment *)
           ~price_increment:pic
           ~cash:10_000.
           ~start:0
@@ -751,35 +784,54 @@ let g
       res
 ;;
 
-let multig n =
-for i = 1 to n
-do
-  let res = g ~pictick:0.001 ~maxpic:0.2 ~tightness:1.4
-  ~initial_value:1. ~drift:0. ~volatility:0.05
-  ~timestep:0.001 ~duration:1. in
-  let arr2 = Array.map (fun (x,y,_) -> (x,y)) res in 
-  array2_to_csv ~filename:("noil/noil"^(string_of_int i)) ~array2:arr2
-done
+(* sample linear calculation of mean and return *)
+let simple nb_repeats =
+  assert (nb_repeats > 0);
+  let sum = ref 0. in
+  let sumofsquares = ref 0. in
+  for i = 1 to nb_repeats
+    do
+    let rand = normal_random () in
+    sum := rand +. !sum;
+    sumofsquares := rand ** 2. +. !sumofsquares
+    done
+    ;
+  let n = float_of_int nb_repeats in
+  let mean = !sum /. n in
+  let var = !sumofsquares /. n -. mean ** 2. in
+  mean, sqrt var
 ;;
 
-(* tightness trop haute -> reduction de capital ? -> perte de return ? *)
-
+(* we repeat gridsampling number_of_rays time and collect mean and std *)
 let barg 
 ~number_of_rays:number_of_rays 
-~pictick:tick ~maxpic:maxpic ~tightness:tight
+~pictick:tick ~maxpic:maxpic ~tightness:range
 ~initial_value:ival ~drift:drift ~volatility:vol 
 ~timestep:dt ~duration:duration =
 let size = int_of_float (maxpic /. tick) - 1 in
+(* mean_return and std_return store sum and sumofsquares before normalising *)
 let mean_return = Array.make size 0. in
+let std_return = Array.make size 0. in
 for i = 1 to number_of_rays
   do  
-  let res = g 
-  ~pictick:tick ~maxpic:maxpic ~tightness:tight
+  let res = gridsampling 
+  ~pictick:tick ~maxpic:maxpic ~tightness:range
   ~initial_value:ival ~drift:drift ~volatility:vol  
   ~timestep:dt ~duration:duration in 
-  (Array.iteri (fun i (_,x,_)  -> (mean_return.(i) <- (mean_return.(i) +. x))) res)
+  (Array.iteri (fun i (_,x,_)  -> (mean_return.(i) <- (mean_return.(i) +. x))) res);
+  (Array.iteri (fun i (_,x,_)  -> (std_return.(i)  <- (std_return.(i)  +. x**2.0))) res);
   done;
-  Array.mapi 
+  let n = (float_of_int number_of_rays) in
+  Array.iteri 
+    (fun i x -> (mean_return.(i) <- mean_return.(i) /. n)) 
+    mean_return;
+  Array.iteri 
+    (fun i x -> (std_return.(i)  <-  sqrt (std_return.(i) /. n -. mean_return.(i)**2.0)))
+    std_return;
+  mean_return, std_return
+;;
+
+  (* Array.mapi 
       (
        fun i x  -> 
        (
@@ -787,12 +839,12 @@ for i = 1 to number_of_rays
         x /. (float_of_int number_of_rays)
        )
       )
-mean_return
+mean_return *)
 ;;
 
 
 (* stocker les 1000 trajectoires *)
-(* impact of thightness?? *)
+(* impact of tightness/range? *)
 
 let scan_vol n = 
 for i = 1 to n
