@@ -13,38 +13,75 @@ suffit-il de calculer le nb de up- et down-crossing?
 
 * mutualiser les realisation de GBM quand on enumere -eg les gridstep
 
+* add transportstep
+
+* allow for (vQ initial, v'Q/vQ = fraction de cash dévolue à Base) allocations
+
+* apply the R(delta t) = log(X(t+delta t)/X(t)) formula to derive mu, sig
+
 *)
 
 (* --------------------- UTILS --------------------- *)
-(* #use "utils.ml";; *)
-(* padded float *)
-let padded_float x pad = 
+(* adds spaces before float and truncate it *)
+let pad_float x length trunc = 
   let s = string_of_float x in
   let l = String.length s in
-  let p = if (pad > l) then pad - l else 0 in
-  let sp = String.make p ' ' in
-  if (x=0.) 
-    then print_string (sp^"*.")
-    else print_string (sp^s)
+  let room_sign = if (x < 0.) then 1 else 0 in 
+  let s_without_sign = String.sub s room_sign
+  let unsigned_truncated_s = String.sub s room_sign (min trunc (l-1)) in
+  let additional_zeros = if (trunc )
+  let room_string =  room_sign + String.length unsigned_truncated_s in
+  let pad = if (length > room_string) then (length - room_string) else 0 in
+  let white_spaces = String.make pad ' ' in
+  let sign = if (x < 0.) then "-" else "" in 
+  print_string (white_spaces^sign^unsigned_truncated_s)
 ;;
 
-let truncate_float x pad = 
+(* truncates float decimals *)
+(* let truncate_float x pad = 
   let shift = 10. ** (float_of_int pad) in
   let xx = x *. shift in
   let xxn = floor xx in
   xxn /. shift
-;;
-
-let pad_trunc_float x pad =
-  let tx = truncate_float x 18 in
-  padded_float tx pad
-;;
+;; *)
 
 (* padded rounded array *)
-let pra pad = 
+let pra length trunc = 
   print_string "| ";
   Array.iter 
-  (fun x -> pad_trunc_float x pad;   print_string "| ")
+  (fun x -> pad_float x length trunc;   print_string "| ")
+;;
+
+(* generating a csv output from a (float * float) array *)
+let array2_to_csv 
+~filename:string ~array2:val_array = 
+  let file_string_out = "csv/"^string^".csv" in
+  let oc = open_out file_string_out in
+  output_string oc  "# time, value\n";
+  Array.iter 
+  (fun (timestamp, value) -> 
+    output_string oc (string_of_float timestamp);
+    output_string oc ", ";
+    output_string oc (string_of_float value);
+    output_char oc '\n'
+    )
+    val_array;
+  close_out oc
+  ;;
+
+let moving_average n arr2 =
+  let len = Array.length arr2 in
+  let simresult = Array.make len (0.,0.) in
+  for i = 0 to len - 1 do
+    let sum = ref 0. in
+    let count = ref 0 in
+    for j = max 0 (i-n+1) to i do
+      sum := !sum +. snd arr2.(j);
+      incr count;
+    done;
+    simresult.(i) <- (fst arr2.(i), !sum /. float_of_int !count);
+  done;
+  simresult
 ;;
 
 (* --------------------- BROWNIANS --------------------- *)
@@ -66,17 +103,17 @@ let normal_random () =
 let simple nb_repeats =
   assert (nb_repeats > 0);
   let sum = ref 0. in
-  let sumofsquasimres = ref 0. in
+  let sumofsquares = ref 0. in
   for i = 1 to nb_repeats
     do
     let rand = normal_random () in
     sum := rand +. !sum;
-    sumofsquasimres := rand ** 2. +. !sumofsquasimres
+    sumofsquares := rand ** 2. +. !sumofsquares
     done
     ;
   let n = float_of_int nb_repeats in
   let mean = !sum /. n in
-  let var = !sumofsquasimres /. n -. mean ** 2. in
+  let var = !sumofsquares /. n -. mean ** 2. in
   mean, sqrt var
 ;;
 
@@ -152,23 +189,6 @@ let gbrowmo2
     (fun (t,v) -> (t,exp(v)))
     arr2
 ;;
-
-(* generating a csv output from a list *)
-let array2_to_csv 
-~filename:string ~array2:val_array = 
-  let file_string_out = "csv/"^string^".csv" in
-  let oc = open_out file_string_out in
-  output_string oc  "# time, value\n";
-  Array.iter 
-  (fun (timestamp, value) -> 
-    output_string oc (string_of_float timestamp);
-    output_string oc ", ";
-    output_string oc (string_of_float value);
-    output_char oc '\n'
-    )
-    val_array;
-  close_out oc
-  ;;
 
 let gen_price_series 
 ~initial_value:ival ~drift:drift ~volatility:vol 
@@ -445,10 +465,12 @@ let h ~number_of_lines:nb_lines ~filename:filename =
   price_series
 ;;
 
+(* 
 let price_series  =  
 (* h 6748 "Kandle_benchmark_data.csv"  *)
 h ~number_of_lines:243780 ~filename:"csv/data_for_vd.csv" 
-;;
+;; 
+*)
 
 
 (* 
@@ -792,19 +814,20 @@ bundle_sim ~start:0 ~duration:40_000 ~repetitions:6 ~price_series:price_series_t
 (* NB: rangeMultiplier too wide -> reduction of capital -> loss of return *)
 let gridsampling 
 ~gridsteptick:tick ~maxtick:maxtick ~rangeMultiplier:rangeMultiplier
+~quote:vQ
 ~initial_value:ival ~drift:drift ~volatility:vol 
 ~timestep:dt ~duration:duration 
 ~noil:x = 
-  assert (tick >= 0.001);   (* minimum resolution of gridsteps tested *)
-  assert (tick <= maxtick); 
-  assert (1. +. maxtick <= rangeMultiplier); (* should stay in range *)
+assert (tick >= 0.001);   (* minimum resolution of gridsteps tested *)
+assert (tick <= maxtick); 
+assert (1. +. maxtick <= rangeMultiplier); (* should stay in range *)
 
-  let ps = (* OPTIM: could be optimised with one less Array.map *)
-    gen_price_series  
-    ~initial_value:ival ~drift:drift ~volatility:vol 
-    ~timestep:dt ~duration:duration in
-  (* conditional reset last price for IL *) 
-  if (x) then ps.(Array.length ps - 1) <- ps.(0);
+let ps = (* OPTIM: could be optimised with one less Array.map *)
+gen_price_series  
+~initial_value:ival ~drift:drift ~volatility:vol 
+~timestep:dt ~duration:duration in
+(* conditional reset last price for IL *) 
+if (x) then ps.(Array.length ps - 1) <- ps.(0);
   
 (* iterating over gridsteps one with increment tick until maxtick: 
    r(1) = 1 + tick
@@ -814,49 +837,58 @@ let gridsampling
    eg 1.001, 1.002, ..., 1.1
    n = 100
 *)
-  (* j'enleve le - 1 in (* - 1?? NB: array empty if nbs = 0 *)*)
-  let nbs = int_of_float (maxtick /. tick) in 
-  let simres = Array.make nbs (0., 0., 0) in
-  for i = 1 to nbs  
-      do
-      let gridstep = (1. +. (float_of_int i) *. tick) in
-      (* gridstep < rangeMultiplier because gridstep <= 1 + maxtick <=  rangeMultiplier *)
-      let r, u, d = 
-          sim 
-          ~rangeMultiplier:rangeMultiplier (* we fix the rangeMultiplier and vary only gridstep *)
-          ~gridstep:gridstep
-          ~quote:10_000.
-          ~start:0
-          ~duration:(Array.length ps) 
-          (* ^^ number of price values in the time series, not to be confused with duration in time *)
-          ~price_series:ps 
-          in
-          simres.(i-1) <- (gridstep, r, u+d)
-          (* print_float r; print_string ", ";
-          print_int u; print_string ", ";
-          print_int d; print_string "\n"; *)
-      done;
-      simres
+(* j'enleve le - 1 in (* - 1?? NB: array empty if nbs = 0 *)*)
+let nbs = int_of_float (maxtick /. tick) in 
+let simres = Array.make nbs (0., 0., 0) in
+for i = 1 to nbs  
+  do
+  let gridstep = (1. +. (float_of_int i) *. tick) in
+  (* gridstep < rangeMultiplier because gridstep <= 1 + maxtick <=  rangeMultiplier *)
+  let r, u, d = 
+  sim 
+  ~rangeMultiplier:rangeMultiplier (* we fix the rangeMultiplier and vary only gridstep *)
+  ~gridstep:gridstep
+  ~quote:vQ
+  ~start:0
+  ~duration:(Array.length ps) (* << number of price values in the time series, not to be confused with duration in time *)
+  ~price_series:ps 
+  in
+  simres.(i-1) <- (gridstep, r, u+d)
+  (* print_float r; print_string ", ";
+     print_int u; print_string ", ";
+     print_int d; print_string "\n"; *)
+  done;
+  simres
 ;;
 
 (* we repeat gridsampling number_of_rays times and collect mean and std *)
 let barg 
 ~number_of_rays:number_of_rays 
 ~gridsteptick:tick ~maxtick:maxtick ~rangeMultiplier:rangeMultiplier
+~quote:vQ
 ~initial_value:ival ~drift:drift ~volatility:vol 
-~timestep:dt ~duration:duration =
-let size = int_of_float (maxtick /. tick) - 1 in
+~timestep:dt ~duration:duration ~noil:x =
+let nbs = int_of_float (maxtick /. tick) in
 (* mean_return and std_return store sum and sumofsquasimres before normalising *)
-let mean_return = Array.make size 0. in
-let std_return  = Array.make size 0. in
+let mean_return = Array.make nbs 0. 
+and mean_crossings = Array.make nbs 0.
+and std_return  = Array.make nbs 0. 
+in
 for i = 1 to number_of_rays
   do  
-  let simres = gridsampling 
+  let sim_res = gridsampling 
   ~gridsteptick:tick ~maxtick:maxtick ~rangeMultiplier:rangeMultiplier
+  ~quote:vQ
   ~initial_value:ival ~drift:drift ~volatility:vol  
-  ~timestep:dt ~duration:duration ~noil:false in 
-  (Array.iteri (fun i (_,x,_)  -> (mean_return.(i) <- (mean_return.(i) +. x))) simres);
-  (Array.iteri (fun i (_,x,_)  -> (std_return.(i)  <- (std_return.(i)  +. x**2.0))) simres);
+  ~timestep:dt ~duration:duration ~noil:x in 
+  Array.iteri 
+  (
+    fun i (_,x,c)  -> 
+    mean_return.(i)    <- mean_return.(i) +. x;
+    std_return.(i)     <- std_return.(i)  +. x**2.0;
+    mean_crossings.(i) <- mean_crossings.(i) +. float_of_int c
+  )
+  sim_res;
   done;
   let n = (float_of_int number_of_rays) in
   Array.iteri 
@@ -865,14 +897,60 @@ for i = 1 to number_of_rays
   Array.iteri 
     (fun i x -> (std_return.(i)  <-  sqrt (std_return.(i) /. n -. mean_return.(i)**2.0)))
     std_return;
-  mean_return, std_return
+  Array.iteri 
+    (fun i x -> (mean_crossings.(i) <- mean_crossings.(i) /. n)) 
+    mean_return;
+  mean_return, 
+  std_return, 
+  mean_crossings
 ;;
 (* pourquoi tant de zeros "à droite" pour les valeurs plus hautes de gridstep
    dans mean (et donc dans std)? 
    return = mtmf/mtmi - 1 so perhaps because of simreset ??
    simresultats instables!
 *)
-(* impact of rangeMultiplier?    *)
+(* quel est l'impact of rangeMultiplier?    *)
+
+let bc ~number_of_rays:n ~rangeMultiplier:rangeMultiplier ~volatility:vol = 
+let mr, sr, mc = 
+barg ~number_of_rays:n
+~gridsteptick:0.01
+~maxtick:0.1
+~rangeMultiplier:rangeMultiplier
+~quote:10_000.
+~initial_value:1.
+~drift:0.
+~volatility:vol
+~timestep:0.001
+~duration:1.
+~noil:false in
+pra 9 6 mr; print_newline ();
+pra 9 6 sr; print_newline ();
+pra 9 6 mc; print_newline ();
+;;
+
+let () =
+let nbr = int_of_string Sys.argv.(1) 
+and rangeMultiplier = float_of_string Sys.argv.(2)
+and vol =  float_of_string Sys.argv.(3) in
+bc ~number_of_rays:nbr ~rangeMultiplier:rangeMultiplier ~volatility:vol
+;;
+
+let hek_mr = [|
+-0.009626; 
+-0.008289;
+-0.005858;
+-0.004439;
+-0.001539;
+-0.001260;
+-0.000861;
+-0.000563;
+-0.000395;
+-0.000079
+|]
+;;
+
+(*
 
 let scan_vol n = 
 for i = 1 to n
@@ -880,11 +958,11 @@ do
 let vol = 0.005 *. (float_of_int i) in
 let volstring = string_of_float vol in 
 let filename = "noil/meanret"^volstring in
-let mr = barg 
+let mr, sr, mc = barg 
 ~number_of_rays:1000 
-~gridsteptick:0.001 ~maxtick:0.2 ~rangeMultiplier:1.4
+~gridsteptick:0.001 ~maxtick:0.2 ~rangeMultiplier:1.4 ~quote:10_000.
 ~initial_value:1. ~drift:0. ~volatility:vol
-~timestep:0.001 ~duration:1. in 
+~timestep:0.001 ~duration:1. ~noil:false in 
 array2_to_csv ~filename:filename ~array2:mr
 done
 ;;
@@ -894,34 +972,21 @@ for i = 1 to nv (* nv = 10 *)
   do
   let vol = 0.005 *. (float_of_int i) in
   let volstring = string_of_float vol in 
-  let gm = barg ~number_of_rays:nr 
-  ~gridsteptick:0.001 ~maxtick:0.2 ~rangeMultiplier:1.4
+  let mr, sr, mc = barg ~number_of_rays:nr 
+  ~gridsteptick:0.001 ~maxtick:0.2 ~rangeMultiplier:1.4 ~quote:10_000.
   ~initial_value:1. ~drift:0. ~volatility:vol 
   ~timestep:0.01 ~duration:1. in 
   let fileprefix = "gm/gm"^volstring in
-  array2_to_csv ~filename:fileprefix ~array2:gm
+  array2_to_csv ~filename:fileprefix ~array2:mr
   done
 ;;
+
+*)
 
 (* 
 sweepy_barg ~number_of_rays:1 ~number_of_vols:1
 ;; 
 *)
-
-let moving_average n arr =
-  let len = Array.length arr in
-  let simresult = Array.make len 0. in
-  for i = 0 to len - 1 do
-    let sum = ref 0. in
-    let count = ref 0 in
-    for j = max 0 (i-n+1) to i do
-      sum := !sum +. snd arr.(j);
-      incr count;
-    done;
-    simresult.(i) <- (fst arr.(i), !sum /. float_of_int !count);
-  done;
-  simresult
-;;
 
 (* 
 
