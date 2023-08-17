@@ -17,8 +17,6 @@ suffit-il de calculer le nb de up- et down-crossing?
 
 * allow for (vQ initial, v'Q/vQ = fraction de cash dévolue à Base) allocations
 
-* apply the R(delta t) = log(X(t+delta t)/X(t)) formula to derive mu, sig
-
 *)
 
 (* --------------------- UTILS --------------------- *)
@@ -40,14 +38,6 @@ let pad_float f length trunc =
   let sign = if (fsign = 1) then "-" else "" in
   print_string (white_spaces^sign^x^"."^y'^zeros)
 ;;
-
-(* truncates float decimals *)
-(* let truncate_float x pad = 
-  let shift = 10. ** (float_of_int pad) in
-  let xx = x *. shift in
-  let xxn = floor xx in
-  xxn /. shift
-;; *)
 
 (* padded rounded array *)
 let pra length trunc = 
@@ -194,6 +184,22 @@ let gbrowmo2
     arr2
 ;;
 
+(* generates nb_of_rays new trajectories each in separate file *)
+let gbm_sim 
+?(nb_of_rays = 1)
+?(initial_value = 1.) ?(drift = 0.01) ?(volatility = 0.01) 
+?(timestep = 1./.1440.) ?(duration = 1.)
+() = 
+for i = 1 to nb_of_rays
+do
+ let gb = gbrowmo 
+ ~initial_value:initial_value ~drift:drift ~volatility:volatility 
+ ~timestep:timestep ~duration:duration in
+ let filename = "gm/gbm2"^(string_of_float volatility)^"_"^(string_of_int i) in
+ array2_to_csv ~filename:filename ~array2:gb
+done
+;;
+
 let gen_price_series 
 ~initial_value:ival ~drift:drift ~volatility:vol 
 ~timestep:dt ~duration:duration = 
@@ -214,27 +220,12 @@ gen_price_series
 *)
 
 
-(* generates nb_of_rays new trajectories each in separate file *)
-let gbm_sim 
-?(nb_of_rays = 1)
-?(initial_value = 1.) ?(drift = 0.01) ?(volatility = 0.01) 
-?(timestep = 1./.1440.) ?(duration = 1.)
-() = 
-for i = 1 to nb_of_rays
-do
- let gb = gbrowmo 
- ~initial_value:initial_value ~drift:drift ~volatility:volatility 
- ~timestep:timestep ~duration:duration in
- let filename = "gm/gbm2"^(string_of_float volatility)^"_"^(string_of_int i) in
- array2_to_csv ~filename:filename ~array2:gb
-done
-;;
-
 (* 
    inputs: discrete GBM parameters
    outputs: array of pairs (time, log return) 
    number of simulation steps = duration/dt + 1 
 *)
+
 let gen_log_returns 
 ~initial_value:ival 
 ~drift:drift 
@@ -261,6 +252,51 @@ let gen_log_returns
         )
   )
 ;;
+
+(*
+let lrs =  
+  gen_log_returns 
+  ~initial_value:1. ~drift:0. ~volatility:0.1 
+  ~timestep:0.001 ~duration:0.1 in
+pra 10 6 (Array.map (fun (x,y) -> y) lrs)
+;;
+*)
+
+(* inference of mean and std *)
+(* 
+we apply the R(delta t) = log(X(t+delta t)/X(t)) formula to derive mu, sig
+m = (\mu -\sig^2/2) \da t
+s = \sig\sqrt{\da t}
+sig = s/\sqrt{\da t}
+mu  = 1/\da t(m + s^2/2) 
+*)
+let infer_mean_std dt arr2 = 
+let sum = ref 0. in
+let sumofsquares = ref 0. in
+let n = Array.length arr2 in 
+for i = 0 to (n - 1)
+  do
+  let x,y = arr2.(i) in
+  sum := y +. !sum;
+  sumofsquares := y ** 2. +. !sumofsquares
+  done
+  ;
+let nf = float_of_int n in
+let mean = !sum /. nf in
+let var = !sumofsquares /. nf -. mean ** 2. in
+  (mean +. var /. 2. ) /. dt,
+  sqrt (var /. dt)
+;;
+
+(* 
+NB: sig is good, but mean is not 0 after 10_000 samples
+let lrs =  
+  gen_log_returns 
+  ~initial_value:1. ~drift:0. ~volatility:0.1 
+  ~timestep:0.001 ~duration:10. in
+infer_mean_std 0.001 lrs;;
+- : float * float = (0.0315092310528696379, 0.0992095041088259)
+ *)
 
 (* 
    input: price series
