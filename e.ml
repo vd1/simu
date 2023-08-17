@@ -23,18 +23,22 @@ suffit-il de calculer le nb de up- et down-crossing?
 
 (* --------------------- UTILS --------------------- *)
 (* adds spaces before float and truncate it *)
-let pad_float x length trunc = 
-  let s = string_of_float x in
-  let l = String.length s in
-  let room_sign = if (x < 0.) then 1 else 0 in 
-  let s_without_sign = String.sub s room_sign
-  let unsigned_truncated_s = String.sub s room_sign (min trunc (l-1)) in
-  let additional_zeros = if (trunc )
-  let room_string =  room_sign + String.length unsigned_truncated_s in
-  let pad = if (length > room_string) then (length - room_string) else 0 in
-  let white_spaces = String.make pad ' ' in
-  let sign = if (x < 0.) then "-" else "" in 
-  print_string (white_spaces^sign^unsigned_truncated_s)
+let pad_float f length trunc = 
+  let fsign, af = if (f < 0.) then (1, -. f) else (0, f) in 
+  let s = string_of_float af in
+  let [x; y] = String.split_on_char '.' s in
+  let xl = String.length x in
+  let yl = String.length y in
+  let y' = String.sub y 0 (min trunc yl) in
+  let nb_additional_zeros = max (trunc - yl) 0 in
+  let total_non_white_string_length =  
+    fsign + xl + 1 + trunc in
+  let nb_additional_white_spaces = 
+    max (length - total_non_white_string_length) 0 in
+  let white_spaces = String.make nb_additional_white_spaces ' ' in
+  let zeros = String.make nb_additional_zeros '0' in
+  let sign = if (fsign = 1) then "-" else "" in
+  print_string (white_spaces^sign^x^"."^y'^zeros)
 ;;
 
 (* truncates float decimals *)
@@ -618,11 +622,13 @@ let sim
 ~rangeMultiplier:rangeMultiplier 
 ~gridstep:gridstep 
 ~quote:qB 
+~cashmix:alpha (* 0≤alpha≤1 *)
 ~start:start 
 ~duration:duration 
 (* the future *)
 ~price_series:price_series 
 =
+
 (* state: static part *)
 let mid = int_of_float (log(rangeMultiplier) /. log(gridstep)) in
 let index_set = 2 * mid + 1 in
@@ -639,8 +645,8 @@ pra 12 price_grid;  print_string "\n"; *)
 
 (* here we divide the initial quote capital *)
 (* starting a 50/50 position *)
-let qB' = 0.5 *. qB in
-let qA =  qB' /. p0 in
+let qB' = alpha *. qB in
+let qA =  (1. -. alpha) *. qB /. p0 in
 (* state: dynamic part *)
 let ia, ib, ask, bid = 
 populate_book 
@@ -777,28 +783,59 @@ let mtmi = qB in (* qB since we enter only with cash *)
 (mtmf /. mtmi -. 1.), !rebu, !rebd
 ;;
 
+let ps1 = [|1.; 1.2;0.8;1.2;0.8|] in
+let ps2 = [|1.; 1.04; 0.93; 1.03; 0.98; 1.083|] in
+let length = Array.length ps2 in
+let pg = generate_price_grid 
+~half_number_of_price_points:2
+~gridstep:1.04
+~initial_price:1.0 in
+pra 6 6 pg; 
+print_newline();
+sim
+~rangeMultiplier:1.1 
+~gridstep:1.04
+~quote:10_000. 
+~cashmix:0.5
+~start:0
+~duration:length
+(* the future *)
+~price_series:ps2
+;;
+
+(* 
+pg = | 0.9245| 0.9615|      1|    1.04|  1.081| 
+ps2 = 1.; 1.04; 0.93; 1.03; 0.98; 1.083
+1u + 2d + 1u + 0d + 2u = 4u + 2d
+*)  
+(* u = 9  +  0 + 18 + 
+d = 0  + 18 +  0 + 18 *)
+
+(* for i = (start + 1) to (start + duration - 1)  *)
+
 let bundle_sim ~start:start ~duration:duration ~repetitions:repetitions ~price_series:price_series = 
 let siim start duration = 
 sim 
 ~rangeMultiplier:(1.01 ** 20.000_000_1) 
 ~gridstep:1.01 
 ~quote:10_000.
+~cashmix:0.5
 ~duration:duration
 ~price_series:price_series
 ~start:start 
 in
-let simrest = Array.make repetitions (0., 0, 0) in 
+let simres = Array.make repetitions (0., 0, 0) in 
 (* here: how many times we launch a simulation *)
 for i = 0 to (repetitions - 1)
   do
   (* fst arg of siim = where to start in the price series
      snd arg = how many prices to consume in this series *)
-  simrest.(i) <- siim (start + i * duration) duration
+  simres.(i) <- siim (start + i * duration) duration
   done;
   Array.iter (fun (f,nb_upcrossing, nb_downcrossing) -> 
     print_float f; print_string ", "; 
     print_int nb_upcrossing; print_string ", ";
-    print_int nb_downcrossing; print_string "\n") simrest
+    print_int nb_downcrossing; print_string "\n") simres
 ;;
 
 (* 
@@ -815,6 +852,7 @@ bundle_sim ~start:0 ~duration:40_000 ~repetitions:6 ~price_series:price_series_t
 let gridsampling 
 ~gridsteptick:tick ~maxtick:maxtick ~rangeMultiplier:rangeMultiplier
 ~quote:vQ
+~cashmix:alpha
 ~initial_value:ival ~drift:drift ~volatility:vol 
 ~timestep:dt ~duration:duration 
 ~noil:x = 
@@ -849,6 +887,7 @@ for i = 1 to nbs
   ~rangeMultiplier:rangeMultiplier (* we fix the rangeMultiplier and vary only gridstep *)
   ~gridstep:gridstep
   ~quote:vQ
+  ~cashmix:alpha
   ~start:0
   ~duration:(Array.length ps) (* << number of price values in the time series, not to be confused with duration in time *)
   ~price_series:ps 
@@ -866,6 +905,7 @@ let barg
 ~number_of_rays:number_of_rays 
 ~gridsteptick:tick ~maxtick:maxtick ~rangeMultiplier:rangeMultiplier
 ~quote:vQ
+~cashmix:alpha
 ~initial_value:ival ~drift:drift ~volatility:vol 
 ~timestep:dt ~duration:duration ~noil:x =
 let nbs = int_of_float (maxtick /. tick) in
@@ -879,6 +919,7 @@ for i = 1 to number_of_rays
   let sim_res = gridsampling 
   ~gridsteptick:tick ~maxtick:maxtick ~rangeMultiplier:rangeMultiplier
   ~quote:vQ
+  ~cashmix:alpha
   ~initial_value:ival ~drift:drift ~volatility:vol  
   ~timestep:dt ~duration:duration ~noil:x in 
   Array.iteri 
@@ -918,6 +959,7 @@ barg ~number_of_rays:n
 ~maxtick:0.1
 ~rangeMultiplier:rangeMultiplier
 ~quote:10_000.
+~cashmix:0.5
 ~initial_value:1.
 ~drift:0.
 ~volatility:vol
@@ -947,6 +989,34 @@ let hek_mr = [|
 -0.000563;
 -0.000395;
 -0.000079
+|]
+;;
+
+let hek_sr = [|
+0.058155;
+0.056541;
+0.055248;
+0.056184;
+0.061630;
+0.060458;
+0.059336;
+0.058166;
+0.057107;
+0.056065
+|]
+;;
+
+let hek_mc = [|
+23.1179;
+9.5560;
+5.6806;
+3.5857;
+2.1701;
+1.6937;
+1.3665;
+1.1201;
+0.9244;
+0.7765 
 |]
 ;;
 
