@@ -1102,28 +1102,34 @@ tg', uc', dc', lox', hix'
 
 
 (* test sim_reset vs sim (no reset) *)
-let ps = 
+let test_sim_reset ~gridstep:gridstep ~volatility:vol = 
+let ps =
 gen_price_series 
-  ~initial_value:1. ~drift:0. ~volatility:0.1 
+  ~initial_value:1. ~drift:0. ~volatility:vol
   ~timestep:0.001 ~duration:1. in
+
+let rangeMultiplier = gridstep ** 2.000_1
+and quote = 10_000.0
+and mix = 0.5 in
+
 sim_reset
-  ~rangeMultiplier:(1.005 ** 2.000_1) 
-  ~gridstep:1.005 
-  ~quote:10_000.
-  ~cashmix:0.5
+  ~rangeMultiplier:rangeMultiplier 
+  ~gridstep:gridstep
+  ~quote:quote
+  ~cashmix:mix
   ~start:0
   ~price_series:ps
   ~total_gamma:1.
   ~uc:0
   ~dc:0
   ~loexit:0
-  ~hiexit:1
+  ~hiexit:0
 ,
 sim
-    ~rangeMultiplier:(1.005 ** 2.000_1) 
-    ~gridstep:1.005 
-    ~quote:10_000.
-    ~cashmix:0.5
+    ~rangeMultiplier:rangeMultiplier
+    ~gridstep:gridstep 
+    ~quote:quote
+    ~cashmix:mix
     ~start:0
     ~duration:(Array.length ps)
     ~price_series:ps  
