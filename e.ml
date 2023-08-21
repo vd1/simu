@@ -866,13 +866,7 @@ let mtmi = qB in (* qB since we enter only with cash *)
   pra 6 ask; print_newline();
   print_float (!current_price *. (portfolio_A mid (!ia) ask)); print_newline(); 
   *)
-print_string("up exits: ");
-print_int(!cross_above);
-print_string(", ");
-print_string("down exits: ");
-print_int(!cross_below);
-print_newline();
-(mtmf /. mtmi -. 1.), !rebu, !rebd
+(mtmf /. mtmi -. 1.), !rebu, !rebd, !cross_above, !cross_below
 ;;
 
 (* test de sim *)
@@ -1102,7 +1096,7 @@ tg', uc', dc', lox', hix'
 
 
 (* test sim_reset vs sim (no reset) *)
-let test_sim_reset ~gridstep:gridstep ~volatility:vol = 
+let test_sim_reset_vs_sim ~gridstep:gridstep ~volatility:vol = 
 let ps =
 gen_price_series 
   ~initial_value:1. ~drift:0. ~volatility:vol
@@ -1165,7 +1159,7 @@ let bundle_sim ~start:start ~duration:duration ~repetitions:repetitions ~price_s
   ~duration:duration
   ~price_series:price_series
   in
-  let simres = Array.make repetitions (0., 0, 0) in 
+  let simres = Array.make repetitions (0., 0, 0, 0, 0) in 
   (* here: how many times we launch a simulation *)
   for i = 0 to (repetitions - 1)
     do
@@ -1173,10 +1167,17 @@ let bundle_sim ~start:start ~duration:duration ~repetitions:repetitions ~price_s
        snd arg = how many prices to consume in this series *)
     simres.(i) <- siim (start + i * duration) duration
     done;
-    Array.iter (fun (f,nb_upcrossing, nb_downcrossing) -> 
-      print_float f; print_string ", "; 
-      print_int nb_upcrossing; print_string ", ";
-      print_int nb_downcrossing; print_string "\n") simres
+    Array.iter (fun (f,nb_upcrossing, nb_downcrossing, nb_high_exits, nb_low_exits) -> 
+      print_float f; 
+      print_string ", "; 
+      print_int nb_upcrossing; 
+      print_string ", ";
+      print_int nb_downcrossing; 
+      print_string ", ";
+      print_int nb_high_exits; 
+      print_string ", ";
+      print_int nb_low_exits; 
+      print_string "\n") simres
   ;;
   
   (* 
