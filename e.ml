@@ -2,6 +2,10 @@
 
 TODO:
 
+* study difference bewteen sigmaF and sigmaH
+call sigmaF = volatility of GBM recovered from R(\delta t) [Farhat]
+call sigmaH = sigma(p)/pzero [Hamza]
+
 * allow for (vQ initial, v'Q/vQ = fraction de cash dévolue à Base) allocations
 * implementer un reset sur une condition de prix? 
     chaque fois que p up/down-cross le dernier ask/bid on resplit 50/50 moulo un swap
@@ -112,6 +116,10 @@ let moving_average n arr2 =
 ;;
 
 (* --------------------- BROWNIANS --------------------- *)
+
+let s  = Random.State.make_self_init ();;
+let s' = Random.State.make_self_init ();;
+
 let pi = 4.0 *. atan 1.0;;
 
 (* box_muller: [0,1]^2 -> R: G(box_muller)(U_2) = N(0,1) *)
@@ -123,7 +131,7 @@ let box_muller u1 u2 =
 ;;
 
 let normal_random () =
-  box_muller (Random.float 1.0) (Random.float 1.0)
+  box_muller (Random.State.float s 1.) (Random.State.float s' 1.)
 ;;
 
 (* O(nb_samples) calculation of mean and return *)
@@ -866,7 +874,13 @@ let mtmi = qB in (* qB since we enter only with cash *)
   pra 6 ask; print_newline();
   print_float (!current_price *. (portfolio_A mid (!ia) ask)); print_newline(); 
   *)
-(mtmf /. mtmi -. 1.), !rebu, !rebd, !cross_above, !cross_below
+(* print_float(!current_price);
+print_string("\n");
+print_float mtmf;
+print_string("\n");
+print_float mtmi;
+print_string("\n"); *)
+(mtmf /. mtmi -. 1.), !rebu, !cross_above, !rebd,  !cross_below
 ;;
 
 (* test de sim *)
@@ -1006,7 +1020,7 @@ while (!current_index < price_series_length &&
 ;
 
 print_string "index/price = "; 
-print_int !current_index;
+pad_float (float_of_int !current_index) 3 0;
 print_string ", ";
 pad_float !current_price 7 5;
 print_string "\n";
@@ -1016,11 +1030,11 @@ let qAf = portfolio_A mid (!ia) ask
 and qBf = portfolio_B (!ib) bid price_grid in
 let mtmf = qAf *. !current_price +. qBf in
 let mtmi = qB in 
-mtmf /. mtmi, 
-!rebu, !rebd, 
+mtmf /. mtmi, (* growth rate *)
+!rebu, !upper_exit,
+!rebd, !lower_exit, 
 !current_index,
-!current_price,
-!lower_exit, !upper_exit
+!current_price
 ;;
 
 (* test sim_stopped *)
@@ -1050,16 +1064,18 @@ let rec sim_reset
   ~price_series:ps
   ~total_gamma:tg
   ~uc:uc
+  ~hiexit:hix
   ~dc:dc
   ~loexit:lox
-  ~hiexit:hix
 =
 (* on lance sim_stopped *)
 let 
-gamma, rebu, rebd, 
+gamma, 
+rebu, upper_exit,
+rebd, lower_exit,
 current_index_in_ps,
-current_price_in_ps,
-lower_exit, upper_exit =
+current_price_in_ps
+=
 sim_stopped 
   ~rangeMultiplier:rangeMultiplier
   ~gridstep:gridstep
@@ -1071,9 +1087,9 @@ in
 (* on accumule les resultats *)
 let tg' = tg *. gamma
 and uc' = uc + rebu
+and hix'  = if (upper_exit) then hix + 1 else hix
 and dc' = dc + rebd
 and lox'  = if (lower_exit) then lox + 1 else lox
-and hix'  = if (upper_exit) then hix + 1 else hix
 in
 
 if (current_index_in_ps < Array.length ps)
@@ -1091,11 +1107,12 @@ if (current_index_in_ps < Array.length ps)
   ~loexit:lox'
   ~hiexit:hix'
  else 
-tg', uc', dc', lox', hix'
+tg', uc', hix',  dc', lox'
 ;;
 
 
 (* test sim_reset vs sim (no reset) *)
+(* maybe sim_reset vs  *)
 let test_sim_reset_vs_sim ~gridstep:gridstep ~volatility:vol = 
 let ps =
 gen_price_series 
@@ -1115,9 +1132,9 @@ sim_reset
   ~price_series:ps
   ~total_gamma:1.
   ~uc:0
+  ~hiexit:0
   ~dc:0
   ~loexit:0
-  ~hiexit:0
 ,
 sim
     ~rangeMultiplier:rangeMultiplier
@@ -1186,10 +1203,11 @@ let bundle_sim ~start:start ~duration:duration ~repetitions:repetitions ~price_s
    *)
   
 (* inputs: gridstep sampling parameters, GBM parameters *)
-(* outputs: array of (gridstep, return, crossings)   *)
+(* outputs: array of (gridstep, return, crossings) for one realisation *)
 (* gridstep aka price increment aka gridstep *)
 (* NB: we share the GBM realisation "ps" across all gridsteps *)
 (* NB: rangeMultiplier too wide -> reduction of capital -> loss of return *)
+
 let gridsampling 
 ~gridsteptick:tick ~maxtick:maxtick ~rangeMultiplier:rangeMultiplier
 ~quote:vQ
@@ -1197,6 +1215,7 @@ let gridsampling
 ~initial_value:ival ~drift:drift ~volatility:vol 
 ~timestep:dt ~duration:duration 
 ~noil:x = 
+
 assert (tick >= 0.001);   (* minimum resolution of gridsteps tested *)
 assert (tick <= maxtick); 
 assert (1. +. maxtick <= rangeMultiplier); (* should stay in range *)
@@ -1223,14 +1242,14 @@ for i = 1 to nbs
   do
   let gridstep = (1. +. (float_of_int i) *. tick) in
   (* gridstep < rangeMultiplier because gridstep <= 1 + maxtick <=  rangeMultiplier *)
-  let r, u, d = 
+  let r, u, hix, d, lox = 
   sim 
   ~rangeMultiplier:rangeMultiplier (* we fix the rangeMultiplier and vary only gridstep *)
   ~gridstep:gridstep
   ~quote:vQ
   ~cashmix:alpha
   ~start:0
-  ~duration:(Array.length ps) (* << number of price values in the time series, not to be confused with duration in time *)
+  ~duration:(Array.length ps) (* <- number of price values in the time series, not to be confused with duration in time *)
   ~price_series:ps 
   in
   simres.(i-1) <- (gridstep, r, u+d)
@@ -1241,12 +1260,13 @@ for i = 1 to nbs
   simres
 ;;
 
+
 (* 
 fix rangeMultiplier and duration,
 build correspondence: volatility |-> best gridStep 
 to find optimal gridstep, we repeat gridsampling 
 number_of_rays times and collect mean and std 
-then it is up t uso to define "best",
+then it is up to us to define "best",
 it can be: Sharp, meanreturn - gamma * varreturn, etc
 *)
 
@@ -1256,12 +1276,13 @@ let barg
 ~quote:vQ
 ~cashmix:alpha
 ~initial_value:ival ~drift:drift ~volatility:vol 
-~timestep:dt ~duration:duration ~noil:x =
+~timestep:dt ~duration:duration ~noil:x 
+=
 let nbs = int_of_float (maxtick /. tick) in
 (* mean_return and std_return store sum and sumofsquares before normalising *)
 let mean_return = Array.make nbs 0. 
-and mean_crossings = Array.make nbs 0.
 and std_return  = Array.make nbs 0. 
+and mean_crossings_int = Array.make nbs 0
 in
 for i = 1 to number_of_rays
   do  
@@ -1273,28 +1294,30 @@ for i = 1 to number_of_rays
   ~timestep:dt ~duration:duration ~noil:x in 
   Array.iteri 
   (
-    fun i (_,x,c)  -> 
+    fun i (gridstep,x,c)  -> 
     mean_return.(i)    <- mean_return.(i) +. x;
     std_return.(i)     <- std_return.(i)  +. x**2.0;
-    mean_crossings.(i) <- mean_crossings.(i) +. float_of_int c
+    mean_crossings_int.(i) <- mean_crossings_int.(i) + c
   )
   sim_res;
   done;
   let n = (float_of_int number_of_rays) in
   Array.iteri 
-    (fun i x -> (mean_return.(i) <- mean_return.(i) /. n)) 
+    (fun i x -> (mean_return.(i) <- x /. n)) 
     mean_return;
   Array.iteri 
-    (fun i x -> (std_return.(i)  <-  sqrt (std_return.(i) /. n -. mean_return.(i)**2.0)))
+    (fun i x -> (std_return.(i)  <-  sqrt (x /. n -. mean_return.(i) ** 2.0)))
     std_return;
-  Array.iteri 
-    (fun i x -> (mean_crossings.(i) <- mean_crossings.(i) /. n)) 
-    mean_return;
   mean_return, 
   std_return, 
-  mean_crossings
+  Array.map
+    (fun x -> ((float_of_int x) /. n)) 
+    mean_crossings_int;
 ;;
-(* pourquoi tant de zeros "à droite" pour les valeurs plus hautes de gridstep
+
+
+(* 
+   pourquoi tant de zeros "à droite" pour les valeurs plus hautes de gridstep
    dans mean (et donc dans std)? 
    return = mtmf/mtmi - 1 so perhaps because of reset ??
    resultats instables!
@@ -1302,35 +1325,117 @@ for i = 1 to number_of_rays
 
 (* quel est l'impact of rangeMultiplier?    *)
 
-let bc ~number_of_rays:n ~rangeMultiplier:rangeMultiplier ~volatility:vol = 
+let bc 
+~number_of_rays:n 
+~volatility:vol 
+~rangeMultiplier:rangeMultiplier 
+= 
 let mr, sr, mc = 
-barg ~number_of_rays:n
-~gridsteptick:0.01
-~maxtick:0.1
+barg 
+~number_of_rays:n
+~gridsteptick:0.001
+~maxtick:(rangeMultiplier -. 1.)
 ~rangeMultiplier:rangeMultiplier
-~quote:10_000.
-~cashmix:0.5
+~quote:20_000.
+~cashmix:0.9
 ~initial_value:1.
-~drift:0.
+~drift:0. (* (-0.1) *)
 ~volatility:vol
 ~timestep:0.001
 ~duration:1.
 ~noil:false in
-pra 9 6 mr; print_newline ();
-pra 9 6 sr; print_newline ();
-pra 9 6 mc; print_newline ();
+(* 
+print_string "mean ret  "; pra 7 3 mr; print_newline ();
+print_string "std ret   "; pra 7 3 sr; print_newline ();
+print_string "mean xing "; pra 7 3 mc; print_newline (); 
+*)
+let maxsh = ref (-1.0) in 
+let index = ref 0 in
+for i = 0 to (Array.length mr - 1)
+ do
+ let sh = mr.(i)/.sr.(i) in
+ if  sh > !maxsh then (maxsh:= sh; index:=i)
+ done;
+ (* print_string "grid_step, max_sharpe, mean_return, std_return, mean_xing"; *)
+((float_of_int !index) *. 0.001, !maxsh, mr.(!index),sr.(!index),mc.(!index))
 ;;
 
 let () =
 let nbr = int_of_string Sys.argv.(1) 
-and rangeMultiplier = float_of_string Sys.argv.(2)
-and vol =  float_of_string Sys.argv.(3) in
-bc ~number_of_rays:nbr ~rangeMultiplier:rangeMultiplier ~volatility:vol
+and vol =  float_of_string Sys.argv.(2) 
+and rangeMultiplier = float_of_string Sys.argv.(3)
+in
+(* we slice the rangeMultipler into 50 ticks *)
+let tronc = (rangeMultiplier -. 1.)/. 50. in
+for i = 1 to 50
+do
+let range = 1. +. (float_of_int i) *. tronc in
+let bestgs, maxsh, mr, sr, mc =
+bc 
+~number_of_rays:nbr 
+~volatility:vol
+~rangeMultiplier:range 
+in
+(* print_string Sys.argv.(1); print_string " reps, vol ";
+print_string Sys.argv.(2); print_string ", range ";
+print_string Sys.argv.(3); print_string "\n"; *)
+print_string "-> gridstep(range) ";
+print_float bestgs;
+print_string "(";
+print_float range;
+print_string "), max sharpe ";
+print_float maxsh;
+(* pad_float maxsh 5 4; *)
+print_string ", mean ret ";
+print_float mr; 
+(* pad_float mr 5 4; *)
+print_string ", std ret ";
+(* pad_float sr 5 4; *)
+print_float sr; 
+print_string ", mean xing ";
+print_float mc; 
+(* pad_float mc 5 4; *)
+print_string "\n";
+done
 ;;
+
+(* 
+parametres:
+vol   0.01 -0.01-> 0.1
+
+range 1.01 -0.01-> 1.4
+
+= 10 v * 40 r 
+soit par exemple 400 fichiers/tableaux 
+exemple de syntaxe vol0.05_range1.20.csv 
+
+si on prend gstick = 0.001 uniformément et
+maxgstick = range - 1 (vu que les range sont des multiples de gstick)
+le nb de lignes/elements du fichier/tableau 
+volx_rangey.csv sera (y-1)/0.001 -> 
+soit au max 0.4/0.001 = 400
+et au min 0.01/0.001 = 10
+
+si au contraire on fait varier le mid   1 -> 20 
+les petits range vont avoir des tick plus petits: 
+range = 1.01 -> gstick = 0.005
+range = 1.2  -> gstick = 0.1 trop grossier??
+
+en format csv:
+1+4 col: # gridstep, #mr, #sr, #mc, #sharpe
+et un nombre variable de lignes? 
+dans l'experience classique range = 1.4, gstick = 0.001, maxgstick = 0.2, soit N = 200
+en general N = maxgstick/gstick
+
+OK suppose que tu as ces 400 fichiers/tableaux, 
+tu fais quoi?
+selectionne le best Sharpe pour lastSig?
+*)
+
+
 
 
 (*
-
 let scan_vol n = 
 for i = 1 to n
 do  
@@ -1366,3 +1471,31 @@ for i = 1 to nv (* nv = 10 *)
 sweepy_barg ~number_of_rays:1 ~number_of_vols:1
 ;; 
 *)
+
+
+let parameterSampler 
+(* tick = resolution, max tick = max value *)
+~gridsteptick:gstick ~maxgridsteptick:maxgstick 
+~rangeMultiplier:rmtick ~maxrangeMultiplier:maxrmtick 
+=
+assert (gstick >= 0.001);   (* minimum resolution of gridsteps tested *)
+assert (rmtick >= 0.001);   (* minimum resolution of range tested *)
+assert (gstick <= maxgstick); 
+assert (maxgstick <= maxrmtick); (* should stay in range *)
+
+let nbs = int_of_float (maxrmtick /. rmtick) in 
+Array.init nbs 
+(fun i -> 
+  (
+    (float_of_int (i + 1)) *. rmtick),
+    let mbs = (min maxgstick maxrmtick) /. gstick in
+    Array.init 
+    (int_of_float mbs)
+    (fun j -> (float_of_int (j + 1)) *. gstick)
+)
+;;
+
+let prms = parameterSampler 
+~gridsteptick:0.001 ~maxgridsteptick:0.1 
+~rangeMultiplier:0.01 ~maxrangeMultiplier:0.5
+;;
