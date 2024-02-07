@@ -136,21 +136,24 @@ let normal_random () =
 ;;
 
 (* O(nb_samples) calculation of mean and return *)
-let mean_estimate nb_repeats =
+let moment_estimate nb_repeats =
   assert (nb_repeats > 0);
   let sum = ref 0. in
   let sumofsquares = ref 0. in
+  let sumofcubes = ref 0. in
   for i = 1 to nb_repeats
     do
     let rand = normal_random () in
     sum := rand +. !sum;
-    sumofsquares := rand ** 2. +. !sumofsquares
+    sumofsquares := rand ** 2. +. !sumofsquares;
+    sumofcubes := rand ** 3. +. !sumofcubes
     done
     ;
   let n = float_of_int nb_repeats in
   let mean = !sum /. n in
   let var = !sumofsquares /. n -. mean ** 2. in
-  mean, sqrt var
+  let skew = !sumofcubes /. n -. 3. *. mean *. var -. mean ** 3. in
+  mean, sqrt var, skew
 ;;
 
 (* a better way to write the same -> TODO: should write the time-heterogenous version *)
