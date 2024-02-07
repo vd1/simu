@@ -7,6 +7,7 @@ call sigmaF = volatility of GBM recovered from R(\delta t) [Farhat]
 call sigmaH = sigma(p)/pzero [Hamza]
 
 * allow for (vQ initial, v'Q/vQ = fraction de cash dévolue à Base) allocations
+
 * implementer un reset sur une condition de prix? 
     chaque fois que p up/down-cross le dernier ask/bid on resplit 50/50 moulo un swap
     et on repart
@@ -147,6 +148,22 @@ let mean_estimate nb_repeats =
     done
     ;
   let n = float_of_int nb_repeats in
+  let mean = !sum /. n in
+  let var = !sumofsquares /. n -. mean ** 2. in
+  mean, sqrt var
+;;
+
+(* a better way to write the same -> TODO: should write the time-heterogenous version *)
+let mom_estimate ~nb_repeats:n ~rv:gen =
+  let sum, sumofsquares = ref 0., ref 0. in
+  for i = 1 to n
+    do
+    let rand = gen() in
+    sum := rand +. !sum;
+    sumofsquares := rand ** 2. +. !sumofsquares
+    done
+    ;
+  let n = float_of_int n in
   let mean = !sum /. n in
   let var = !sumofsquares /. n -. mean ** 2. in
   mean, sqrt var
@@ -373,10 +390,12 @@ array2_to_csv ~filename:"logret4" ~array2:x
 
 
 (* --------------------- UNISWAP --------------------- *)
-(* input: a (time,price) series, and a fee eta
-   outputs: eta-filtered transforn of input price series *)
-(* vf = viscous filter *)
-(* eta is the fee *) 
+(* 
+  inputs:  a (time, price) series, and a fee = eta
+  outputs: eta-filtered transforn of input price series
+  vf = viscous filter 
+  eta is the fee 
+*) 
 let vf 
 ~driver_series:(p:(float*float) array) 
 ~viscosity:(eta:float) = 
@@ -406,6 +425,23 @@ let vf
         );
     done;
    driven_series, !u, !d
+;;
+
+
+(* verification  *)
+let price_action_example_Hamza =
+  Array.map 
+  (fun x -> (0.,x)) (* add a dummy time *)
+[|
+1.0; 
+1.0077586841543913; 1.005432291470637; 1.0156547158263571; 
+1.0402797436071793; 1.0363059007954705; 1.0323475059494984; 
+1.0583169761864288; 1.0711031476408068; 
+1.0
+|]
+;;
+
+vf ~driver_series:price_action_example_Hamza ~viscosity:0.005
 ;;
 
 (* testing driven price series for various values of viscosity *)
@@ -501,6 +537,23 @@ let unitFees ~viscosity:eta ~volatility:vol =
   (* assuming pfinal = pinitial to simplify *)
   unitQuoteFee +. entryPrice *. unitBaseFee 
 ;;
+
+(* Hamza verification *)
+let unitFees_H ~viscosity:eta ~driver_series:ds = 
+  let entryPrice = 1.0 in
+  let rangeMultiplier = 1.4 in
+  let sqlambda = (sqrt rangeMultiplier) in (* > 1 *)
+  let prefactor = sqlambda /. (sqlambda -. 1.0) /. (2. *. (sqrt entryPrice)) in
+  let viscous_price_series,_,_ = 
+    vf ~driver_series:ds
+       ~viscosity:eta in
+  let viscous_price_series_without_time = Array.map (fun (x,y) -> y) viscous_price_series in
+  let vsrq, vsrb = vsr viscous_price_series_without_time in
+  let unitQuoteFee = prefactor *. eta *. vsrq in
+  let unitBaseFee  = prefactor *. eta *. vsrb in
+  unitQuoteFee, unitBaseFee, prefactor, vsrq, vsrb 
+;;
+
 
 let fees_repeat ~nb_of_rays:n ~viscosity:eta ~volatility:vol = 
   let simres = ref 0. in
