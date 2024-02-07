@@ -135,7 +135,7 @@ let normal_random () =
 ;;
 
 (* O(nb_samples) calculation of mean and return *)
-let mean_estimate nb_repeats =
+let moment_estimate nb_repeats =
   assert (nb_repeats > 0);
   let sum = ref 0. in
   let sumofsquares = ref 0. in
