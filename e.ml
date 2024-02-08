@@ -1011,45 +1011,33 @@ let upper_exit = ref false in
 let lower_exit = ref false in 
 
  
- (* what we do when next price is higher than current *)
+(* what we do when next price is higher than current *)
 let upmove q  =
-  while ((!ia < index_set) && (q >= price_grid.(!ia))) 
-   (* 
-       "left strict AND" semantics matters in the test above: 
-       because !ia can point 1 + higher than the highest possible ask
-       when price has escaped up, in which case price_grid would return 
-       an "index out of bounds" error 
-   *)
+  while ((!ia < index_set) && (q >= price_grid.(!ia)))
+  do
+    incr rebu;
+    let iia = !ia in 
+    bid.(iia - 1) <- ask.(iia) *. price_grid.(iia) /. price_grid.(iia - 1);
+    ask.(iia) <- 0.; 
+    ib := iia - 1;
+    incr ia; 
+    (* Adjusted exit check to avoid out-of-bounds and ensure we're checking the just moved-to position *)
+    if (!ia < index_set && ask.(!ia) <> 0.) || (!ia >= index_set) then upper_exit := true;
+  done
 
-     do
-     (* bb0aa =a=>  bbb0a *)
-     incr rebu; 
- 
-     let iia = !ia in 
-     bid.(iia - 1) <- ask.(iia) *. price_grid.(iia) /. price_grid.(iia - 1); 
-     (* +. bid.(iia - 1); second term off if there is a hole = no partial fill *)
-     ask.(iia) <- 0.; 
-     ib := iia - 1; (* self-filling if holed *)
-     incr ia; 
-     if (!ia >= index_set) then (upper_exit:=true)  
-     done
- 
- (* what we do when next price is lower than current *)
- and downmove q =
-   while ((!ib >= 0) && (q <= price_grid.(!ib)))
-     do
-     (* bb0aa =b=>  b0aaa *)
-     incr rebd; 
- 
-     let iib = !ib in 
-     (* up transport rule *)
-     ask.(iib + 1) <- bid.(iib);
-     (* +. ask.(iib + 1); second term taken off if there is a hole *)
-     bid.(iib) <- 0.;
-     ia := iib + 1;
-     decr ib; 
-     if (!ib < 0) then (lower_exit:=true)
-     done
+(* what we do when next price is lower than current *)
+and downmove q =
+  while ((!ib >= 0) && (q <= price_grid.(!ib)))
+  do
+    incr rebd; 
+    let iib = !ib in 
+    ask.(iib + 1) <- bid.(iib);
+    bid.(iib) <- 0.;
+    ia := iib + 1;
+    decr ib; 
+    (* Adjusted exit check to avoid out-of-bounds and ensure we're checking the just moved-to position *)
+    if (!ib >= 0 && bid.(!ib) <> 0.) || (!ib < 0) then lower_exit := true;
+  done
  in
 
  (* one step *)
