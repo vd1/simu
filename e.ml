@@ -6,16 +6,18 @@ TODO:
 call sigmaF = volatility of GBM recovered from R(\delta t) [Farhat]
 call sigmaH = sigma(p)/pzero [Hamza]
 
-* allow for (vQ initial, v'Q/vQ = fraction de cash dévolue à Base) allocations
+* we allow for allocation of vQ initial using alpha = v'Q/vQ = fraction de cash dévolue à Base 
+[this is the same alpha as in the cash ratio theory]
 
 * implementer un reset sur une condition de prix? 
-    chaque fois que p up/down-cross le dernier ask/bid on resplit 50/50 moulo un swap
-    et on repart
+    chaque fois que p up/down-cross le dernier ask/bid on resplit 50/50 modulo un swap et on repart
     1. etape = tester si le prix sort de l'intervalle
+
 * add transportstep
 * add short
 * decoupler les deux lambda max et min 
-* mutualiser les realisation de GBM quand on enumere -eg les gridstep
+* mutualiser les realisations de GBM quand on enumere -eg les gridstep
+
 * ~noil:true -> simply evaluate the position at p(0) instead of p(-1)?
                 instead of changing the last price; this neglects 
                 the potential (fictitious) buying/selling on the way back to p(0)
@@ -350,6 +352,32 @@ let var = !sumofsquares /. nf -. mean ** 2. in
   sqrt (var /. dt)
 ;;
 
+let infer_vol ~freq:dt ~price_series:ps = 
+
+  let sum = ref 0. in
+  let sumofsquares = ref 0. in
+
+  let n = Array.length ps -1 in
+  (* let log_ret = Array.make (l - 1) 1. in *)
+  let log_ret = Array.make n 0. in
+  
+  for i = 1 to n
+    do  
+    (* log_ret.(i-1) <- log (ps.(i) /. ps.(i-1)); *)
+    let x = log (ps.(i) /. ps.(i-1)) in
+    sum := x +. !sum;
+    sumofsquares := x ** 2. +. !sumofsquares
+    done;  
+
+  let nf = float_of_int n in
+  let mean = !sum /. nf in
+  let var = !sumofsquares /. nf -. mean ** 2. in
+    (* (mean -. var /. 2. ) /. dt, *)
+    sqrt (var /. dt)
+  ;;
+
+(* s = sig * sqrt(dt) *)
+
 (* 
 conclusion: sigma is well-inferred, but mean still unstable after 10_000 samples
 let lrs =  
@@ -587,7 +615,8 @@ let fees_repeat_eta ~nb_of_rays:n ~volatility:vol =
 (* --------------------- DATA --------------------- *)
 (* Loading price_series from a csv file into an array *)
 (* we read nb_lines after dropping the first one *)
-let h ~number_of_lines:nb_lines ~filename:filename = 
+(* col = number of the column of interest *)
+let h ~number_of_lines:nb_lines ~filename:filename ~column:col ~splitchar:c = 
   (* let  nb_lines =  Sys.command ("wc -l "^filename) in *)
   (* print_int nb_lines; print_newline(); *)
   let ic = open_in filename in
@@ -596,8 +625,8 @@ let h ~number_of_lines:nb_lines ~filename:filename =
   for i = 0 to (nb_lines - 1)
     do 
       let sline = input_line ic in
-      let esline = String.split_on_char ',' sline in
-      let current_price = List.nth esline 7 in (* here just the number of the column of interest *)
+      let esline = String.split_on_char c sline in
+      let current_price = List.nth esline col in 
       price_series.(i) <- float_of_string current_price
     done;
   close_in ic;
@@ -607,10 +636,9 @@ let h ~number_of_lines:nb_lines ~filename:filename =
 (* 
 let price_series  =  
 (* h 6748 "Kandle_benchmark_data.csv"  *)
-h ~number_of_lines:243780 ~filename:"csv/data_for_vd.csv" 
+h ~number_of_lines:243780 ~filename:"csv/data_for_vd.csv" ~column:7
 ;; 
 *)
-
 
 (* 
 let ps = Array.sub price_series 0 3;;
@@ -940,8 +968,8 @@ print_string("\n"); *)
 ;;
 
 (* test de sim *)
-let ps = 
-  gen_price_series 
+let test_sim ~duration:x = 
+let ps = gen_price_series 
   ~initial_value:1. ~drift:0. ~volatility:0.2 
   ~timestep:0.001 ~duration:1. in
 sim 
@@ -949,7 +977,7 @@ sim
   ~gridstep:1.01 
   ~quote:10_000.
   ~cashmix:0.5
-  ~duration:1000
+  ~duration:x
   ~price_series:ps
   ~start:0
 ;;
@@ -973,17 +1001,18 @@ let sim_stopped
  ~rangeMultiplier:rangeMultiplier 
  ~gridstep:gridstep 
  ~quote:qB 
- ~cashmix:alpha (* 0≤alpha≤1 *)
+ ~cashmix:alpha
  ~start:start 
  ~price_series:price_series 
  
- =
+=
  
 let mid = int_of_float (log(rangeMultiplier) /. log(gridstep)) in
 let index_set = 2 * mid + 1 in
  
 let price_series_length = Array.length price_series in
 let p0 = price_series.(start) in
+
 let current_index = ref start in (* where we are at in the price_series *)
 let current_price = ref p0 in
  
@@ -1004,23 +1033,22 @@ populate_book
 in
 
 
-(*  tracking up-/down-crossings and upper/lower xits *)
+(*  up-/down-crossings and upper/lower exits *)
 let rebu = ref 0 in
 let rebd = ref 0 in
 let upper_exit = ref false in 
 let lower_exit = ref false in 
 
  
- (* what we do when next price is higher than current *)
+ (* next price is higher than current *)
 let upmove q  =
   while ((!ia < index_set) && (q >= price_grid.(!ia))) 
    (* 
        "left strict AND" semantics matters in the test above: 
        because !ia can point 1 + higher than the highest possible ask
-       when price has escaped up, in which case price_grid would return 
+       when price has escaped up, in which case price_grid in the second term would return 
        an "index out of bounds" error 
    *)
-
      do
      (* bb0aa =a=>  bbb0a *)
      incr rebu; 
@@ -1034,7 +1062,7 @@ let upmove q  =
      if (!ia >= index_set) then (upper_exit:=true)  
      done
  
- (* what we do when next price is lower than current *)
+ (* next price is lower than current *)
  and downmove q =
    while ((!ib >= 0) && (q <= price_grid.(!ib)))
      do
@@ -1075,7 +1103,7 @@ while (!current_index < price_series_length &&
     done
 ;
 
-print_string "index/price = "; 
+print_string "exit index/exit price = "; 
 pad_float (float_of_int !current_index) 3 0;
 print_string ", ";
 pad_float !current_price 7 5;
