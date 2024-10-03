@@ -985,7 +985,7 @@ print_float mtmf;
 print_string("\n");
 print_float mtmi;
 print_string("\n"); *)
-(mtmf /. mtmi -. 1.), !rebu, !cross_above, !rebd,  !cross_below
+(mtmf /. mtmi -. 1.), !rebu, !cross_above, !rebd,  !cross_below, price_series.(start + duration - 1)
 ;;
 
 (* test de sim *)
@@ -994,8 +994,8 @@ let ps = gen_price_series
   ~initial_value:1. ~drift:0. ~volatility:0.2 
   ~timestep:0.001 ~duration:1. in
 sim 
-  ~rangeMultiplier:(1.01 ** 20.000_000_1) 
-  ~gridstep:1.01 
+  (* ~rangeMultiplier:(1.01 ** 20.000_000_1) ~gridstep:1.01  *)
+  ~rangeMultiplier:(1.04 ** 5.000_000_1)  ~gridstep:1.04 
   ~quote:10_000.
   ~cashmix:0.5
   ~duration:x
@@ -1004,18 +1004,18 @@ sim
 ;;
 
 let test_sim_rep ~repeats:n ~duration:x = 
-  let output = Array.make n (0., 0, 0, 0, 0) in
+  let output = Array.make n (0., 0, 0, 0, 0, 1.) in
   for i = 1 to n
   do 
    (* ret, uc, ux, dc, dx  *)
    output.(i - 1) <- test_sim ~duration:x;
   done;
-  let file_string_out = "csv/redacted/test_sim.csv" in
+  let file_string_out = "csv/redacted/test_sim_1.04_5.csv" in
   let oc = open_out file_string_out in
-  output_string oc  "return, up crossings, up exits, down crossings, down exits\n";
+  output_string oc  "return, up crossings, up exits, down crossings, down exits, final price\n";
   Array.iter 
     (
-      fun (ret, uc, ux, dc, dx) -> 
+      fun (ret, uc, ux, dc, dx, fp) -> 
       output_string oc (string_of_float ret);
       output_string oc ", ";
       output_string oc (string_of_int uc);
@@ -1025,6 +1025,8 @@ let test_sim_rep ~repeats:n ~duration:x =
       output_string oc (string_of_int dc);
       output_string oc ", ";
       output_string oc (string_of_int dx);
+      output_string oc ", ";
+      output_string oc (string_of_float fp);
       output_char oc '\n'
     )
   output;
