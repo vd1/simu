@@ -8,3 +8,6 @@ Archive.zip
 *.cmo
 csv/redacted/myenv/
 myenv/
+*.aux
+*.log
+*.bbl
