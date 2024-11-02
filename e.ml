@@ -2,9 +2,10 @@
 
 TODO:
 
-* study difference bewteen sigmaF and sigmaH
+* 
 call sigmaF = volatility of GBM recovered from R(\delta t) [Farhat]
 call sigmaH = sigma(p)/pzero [Hamza]
+study difference bewteen sigmaF and sigmaH
 
 * we allow for allocation of vQ initial using alpha = v'Q/vQ = fraction de cash dévolue à Base 
 [this is the same alpha as in the cash ratio theory]
