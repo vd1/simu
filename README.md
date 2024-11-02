@@ -1,11 +1,11 @@
 # simu
 
-
 The main file is "e.ml" (ocaml) and contains various functions to "integrate" a Kandle or Uniswapv3 strategy
 against a price series (we think of it as a stochastic integral)
 
 ## price series
-1. generators of price series (from data, from BM, from GBM)
+
+1. generators of price series (from data, from Brownian motion (BM), from geometric Brownian motion (GBM))
 
 2. filters of price series
 
@@ -15,16 +15,18 @@ given a (time,price) series vf generates a new (time, price) series which is the
 
 eta is the viscosity (or fee)
 
-the higher eta, the more the output series lags behind the driver series
-
+the larger the viscosity eta, the more the output series lags behind the driver series
 
 ## Univ3 strategies
-3. Square root variation of prices series
 
-4. Capital allocation function (to determine the initial partitioning of wealth in quote/base)
+1. Square root variation of prices series
+
+2. Capital allocation function (to determine the initial partitioning of wealth in quote/base)
 
 ## Kandel strategies
-5. Kandel simulator with main function "sim"
+
+1. Kandel simulator with main function "sim"
+
 ```
 let sim 
 ~tightness:width ~price_increment:gridstep ~cash:qB 
@@ -35,8 +37,9 @@ let sim
 ~price_series:price_series 
 = ...
 ```
-sim takes as input: 
-1) strat parameters = price grid and cash 
+
+sim takes as input:
+
+1) strat parameters = price grid and cash
 2) price series (delimited by start and duration)
 outputs the return (the stochastic integral of strat against price) and number of up- and down-crossings
-

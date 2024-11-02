@@ -1,51 +1,4 @@
-(* 
-
-TODO:
-
-* 
-call sigmaF = volatility of GBM recovered from R(\delta t) [Farhat]
-call sigmaH = sigma(p)/pzero [Hamza]
-study difference bewteen sigmaF and sigmaH
-
-* we allow for allocation of vQ initial using alpha = v'Q/vQ = fraction de cash dévolue à Base 
-[this is the same alpha as in the cash ratio theory]
-
-* implementer un reset sur une condition de prix? 
-    chaque fois que p up/down-cross le dernier ask/bid on resplit 50/50 modulo un swap et on repart
-    1. etape = tester si le prix sort de l'intervalle
-
-=======
->>>>>>> d4984dfd64475f96b7bef5fcdb1bb4ca821d253a
-* add transportstep
-* add short
-* decoupler les deux lambda max et min (pour des intervalles non multiplcativement symétriques)
-* mutualiser les réalisations de GBM quand on enumere -eg les gridstep
-
-* ~noil:true -> simply evaluate the position at p(0) instead of p(-1)?
-                instead of changing the last price; this neglects 
-                the potential (fictitious) buying/selling on the way back to p(0)
-
-
-SUGG:
-
-- can we do everything with log returns log(p_{n+1}/p_{n}) instead of prices
-- liquidity is measured via number of crossings? volume traded?
-- est-ce que les returns sont indépendants de ... 
-- caveat: 
-dt << gridstep sinon on sous-estime les crossings; 
-quelle est la bonne manière de discrétiser le BM? 
-- check jump distribution after dt rather than dt itself??
-
-- implement fat crossings for Kandle as well:  
-  In the case of a "tubular fat price" we check that the price up-crosses "frankly"
-      q/(1 - fee)) >= price_grid.(!ia)
-  with fees 1bps on both local mkt and arb's source
-  can also add gasCosts = 0.02 but then the constraint for profitability depends on Volume traded:
-  V * (1 - mangroveFee) * (1 - uniFee) * p(Uni) > V * p(askKandle) + gasCosts
-
-*)
-
-
+(* Vienna Oct 29 2024 *)
 (* --------------------- UTILS --------------------- *)
 (* adds spaces before float and truncate it *)
 let pad_float f length trunc = 
@@ -90,45 +43,11 @@ let array2_to_csv
   close_out oc
 ;;
 
-(* generating a csv output from a (float * float * int) array *)
-let array3_to_csv 
-~filename:filename ~array3:res = 
-  let file_string_out = "csv/"^filename^".csv" in
-  let oc = open_out file_string_out in
-  output_string oc  "# gridstep ; ret; crossings\n";
-  Array.iter 
-    (
-      fun (price_inc, return, nb_of_crossings) -> 
-      output_string oc (string_of_float price_inc);
-      output_string oc ", ";
-      output_string oc (string_of_float return);
-      output_string oc ", ";
-      output_string oc (string_of_int nb_of_crossings);
-      output_char oc '\n'
-    )
-  res;
-  close_out oc
-;;
-
-let moving_average n arr2 =
-  let len = Array.length arr2 in
-  let simresult = Array.make len (0.,0.) in
-  for i = 0 to len - 1 do
-    let sum = ref 0. in
-    let count = ref 0 in
-    for j = max 0 (i-n+1) to i do
-      sum := !sum +. snd arr2.(j);
-      incr count;
-    done;
-    simresult.(i) <- (fst arr2.(i), !sum /. float_of_int !count);
-  done;
-  simresult
-;;
-
-
 (* --------------------- BROWNIANS --------------------- *)
-let s  = Random.State.make_self_init ();;
-let s' = Random.State.make_self_init ();;
+
+let s  = Random.State.make_self_init ()
+and s' = Random.State.make_self_init ()
+;;
 
 let pi = 4.0 *. atan 1.0;;
 
@@ -145,52 +64,21 @@ let normal_random () =
 ;;
 
 (* O(nb_samples) calculation of mean and return *)
-let moment_estimate nb_repeats =
-  assert (nb_repeats > 0);
-  let sum = ref 0. in
-  let sumofsquares = ref 0. in
-  let sumofcubes = ref 0. in
-  for i = 1 to nb_repeats
+let mom_estimate ~nb_repeats:n ~rv:gen =
+  let sum, sumofsquares, sumofcubes = ref 0., ref 0., ref 0. in
+  for i = 1 to n
     do
-    let rand = normal_random () in
+    let rand = gen() in
     sum := rand +. !sum;
     sumofsquares := rand ** 2. +. !sumofsquares;
     sumofcubes := rand ** 3. +. !sumofcubes
     done
     ;
-  let n = float_of_int nb_repeats in
+  let n = float_of_int n in
   let mean = !sum /. n in
   let var = !sumofsquares /. n -. mean ** 2. in
   let skew = !sumofcubes /. n -. 3. *. mean *. var -. mean ** 3. in
   mean, sqrt var, skew
-;;
-
-(* a better way to write the same -> TODO: should write the time-heterogenous version *)
-let mom_estimate ~nb_repeats:n ~rv:gen =
-  let sum, sumofsquares = ref 0., ref 0. in
-  for i = 1 to n
-    do
-    let rand = gen() in
-    sum := rand +. !sum;
-    sumofsquares := rand ** 2. +. !sumofsquares
-    done
-    ;
-  let n = float_of_int n in
-  let mean = !sum /. n in
-  let var = !sumofsquares /. n -. mean ** 2. in
-  mean, sqrt var
-;;
-
-(* |N(0,1)| > 2 sigma with probability 9% *)
-let xyz n = 
-let simres = ref 0 in
-for i = 1 to n 
-  do
-    let v = abs_float (normal_random ()) in
-      if ( v > 2.) 
-      then incr simres
-  done;
-(float_of_int !simres) /. (float_of_int n)
 ;;
 
 let browmo 
@@ -213,39 +101,6 @@ let browmo
 let gbrowmo
 ~initial_value:ival ~drift:drift ~volatility:vol 
 ~timestep:dt ~duration:duration =
-  let steps = int_of_float (duration /. dt) + 1 in 
-  let series = Array.make steps (0.,0.) in
-  series.(0) <- (0., ival);
-  for i = 1 to (steps - 1)
-    do 
-      let dt_increment = drift *. dt in
-      let sqrt_dt_increment = vol *. normal_random () *. sqrt(dt)  in
-      let (timestamp, value) = series.(i - 1) in
-      let increment = value *. (dt_increment +. sqrt_dt_increment) in
-      series.(i) <- (timestamp +. dt, value +. increment)
-    done;
-  series
-;;
-
-(* 
-gbrowmo ~initial_value:1. ~drift:0. ~volatility:0.1 ~timestep:0.01 ~duration:0.03;; 
-*)
-
-(* 
-alternative construction of GBM
-  Y_0 = \exp(\sig B_0)
-  Y_t = \exp((\mu - \sig^2/2)t + \sig B_t)
-- how to compare and make sure that both methods agree?
-- why store intermediate points ?
-- what is the proper size of dt in relation to volatility?
-- if \mu = 0, \sig = 0.01, Y_t =  A *  \exp(0.01 * B_t),
-  with a slowly decreasing pre-factor A = \exp(-0.5 10^{-4} t)
-  which slowly extinguishes the random term
-*)
-
-let gbrowmo2 
-~initial_value:ival ~drift:drift ~volatility:vol 
-~timestep:dt ~duration:duration =
   (* let ival2 = log(ival) /. vol in *)
   let drift2 = drift -. (vol ** 2.)/. 2.  in
   let arr2 = browmo 
@@ -254,22 +109,6 @@ let gbrowmo2
   Array.map 
     (fun (t,v) -> (t,ival *. exp(v)))
     arr2
-;;
-
-(* generates nb_of_rays new trajectories each in separate file *)
-let gbm_sim 
-?(nb_of_rays = 1)
-?(initial_value = 1.) ?(drift = 0.01) ?(volatility = 0.01) 
-?(timestep = 1./.1440.) ?(duration = 1.)
-() = 
-for i = 1 to nb_of_rays
-do
- let gb = gbrowmo 
- ~initial_value:initial_value ~drift:drift ~volatility:volatility 
- ~timestep:timestep ~duration:duration in
- let filename = "gm/gbm2"^(string_of_float volatility)^"_"^(string_of_int i) in
- array2_to_csv ~filename:filename ~array2:gb
-done
 ;;
 
 let gen_price_series 
@@ -429,19 +268,18 @@ let log_return
 
 (* 
 let x = gen_log_returns 
+~initial_value: 1.0
 ~drift:1. ~volatility:0.05 ~duration:10. ~timestep:0.001 in
-array2_to_csv ~filename:"logret4" ~array2:x
+array2_to_csv ~filename:"tmp" ~array2:x
 ;; 
 *)
 
+
 (* --------------------- DATA --------------------- *)
 (* Loading price_series from a csv file into an array *)
-let h 
-~number_of_lines:nb_lines (* we read nb_lines after dropping the first one *)
-~filename:filename        (* path to csv file *)
-~column:col               (* col = index of the column of interest in the csv file *)
-~splitchar:c              (* split char in the csv file *)
-= 
+(* we read nb_lines after dropping the first one *)
+(* col = number of the column of interest *)
+let h ~number_of_lines:nb_lines ~filename:filename ~column:col ~splitchar:c = 
   (* let  nb_lines =  Sys.command ("wc -l "^filename) in *)
   (* print_int nb_lines; print_newline(); *)
   let ic = open_in filename in
@@ -458,211 +296,12 @@ let h
   price_series
 ;;
 
-(* exemple *)
+(* 
 let price_series  =  
-h ~number_of_lines:600 ~filename:"csv/Kandle_benchmark_data.csv" ~column:6 ~splitchar:','  
+(* h 6748 "Kandle_benchmark_data.csv"  *)
+h ~number_of_lines:243780 ~filename:"csv/data_for_vd.csv" ~column:7 ~splitchar:','
 ;; 
-
-
-(* --------------------- FILTERS --------------------- *)
-(* 
-vf = viscous filter 
-  inputs:  
-    -- (time, price) series, and 
-    -- fee = eta >= 0
-  outputs: eta-filtered transform of input price series
-*) 
-let vf 
-~driver_series:(driver_series:(float*float) array) 
-~viscosity:(eta:float) = 
-  let u = ref 0 in
-  let d = ref 0 in
-  let n = Array.length driver_series in
-  let driven_series = Array.make n (0.,0.) in
-  (* we copy the first price by convention so both series start at the same value *)
-  driven_series.(0) <- driver_series.(0); 
-  for i = 1 to (n - 1) 
-    do
-    (* let _, current_driver_price = driver_series.(i-1) in *)
-    let s, next_driver_price = driver_series.(i) in
-    let _, current_driven_price = driven_series.(i-1) in
-    driven_series.(i) <- (s,current_driven_price);                     (* copy new time, old price *)
-    if (next_driver_price > current_driven_price *. (1. +. eta))       (* eta up crossing *)
-      then 
-        ( 
-           driven_series.(i) <- (s, next_driver_price /. (1. +. eta)); (* catch up *)
-           incr u; 
-        );
-    if (next_driver_price < current_driven_price /. (1. +. eta))       (* eta down crossing *)
-      then 
-        (
-          driven_series.(i) <- (s, next_driver_price *. (1. +. eta));  (* catch down *)
-          incr d;
-        );
-    done;
-   driven_series, !u, !d
-;;
-
-
-(* verification  *)
-let price_action_example_Hamza =
-  Array.map 
-  (fun x -> (0.,x)) (* add a dummy time *)
-[|
-1.0; 
-1.0077586841543913; 1.005432291470637; 1.0156547158263571; 
-1.0402797436071793; 1.0363059007954705; 1.0323475059494984; 
-1.0583169761864288; 1.0711031476408068; 
-1.0
-|]
-;;
-
-vf ~driver_series:price_action_example_Hamza ~viscosity:0.005
-;;
-
-(* testing driven price series for various values of viscosity *)
-let test_filter () = 
-  let ds = browmo 
-  ~initial_value:1. ~drift:0. ~volatility:0.1 ~timestep:0.01 ~duration:10. in
-  array2_to_csv ~filename:"vs/vs0" ~array2:ds;  
-  let output1,_,_ = vf ~driver_series:ds ~viscosity:(0.2) in
-  let output2,_,_ = vf ~driver_series:ds ~viscosity:(0.1) in
-  let output3,_,_ = vf ~driver_series:ds ~viscosity:(0.05) in
-  let output4,_,_ = vf ~driver_series:ds ~viscosity:(0.01) in
-  (* let output4,_,_ = vf ~driver_series:ds ~viscosity:(0.005) in *)
-  array2_to_csv ~filename:("csv/vs/vs1") ~array2:output1;
-  array2_to_csv ~filename:("csv/vs/vs2") ~array2:output2;
-  array2_to_csv ~filename:("csv/vs/vs3") ~array2:output3;
-  array2_to_csv ~filename:("csv/vs/vs4") ~array2:output4;
-;;
-
-(* --------------------- UNISWAP v3 --------------------- *)
-(* vsr = variation of square root *)
-(*  computing up/down square root variation of given price series *)
-(* 
-NB: les fees divergent quand dt -> 0
-voir ci-dessous pour une verification experimentale
-ce n'est sans doute plus le cas quand la série de prix est filtrée par eta
 *)
-let vsr (p: float array) = 
-   let vsrb = ref 0. in
-   let vsrq = ref 0. in
-   for i = 1 to (Array.length p - 1)
-     do
-       if (p.(i) >= p.(i-1)) (* up move *)
-         then 
-          let sq = (sqrt(p.(i)) -. sqrt(p.(i-1))) in
-          vsrq := !vsrq +. sq;
-         else  (* down move *)
-          let sb = (sqrt(1./. p.(i)) -. sqrt(1./. p.(i-1))) in
-          vsrb := !vsrb +. sb; 
-     done;
-  !vsrq, !vsrb
-;;
-
-(* 
-fees divergence 
-
-# let p = gen_price_series 
-~initial_value:1. ~drift:0. ~volatility:0.10 
-~timestep:(1. /. 10000.) ~duration:1.
-in vsr p;;
-- : float * float = (1.95303288845039336, 2.06327514035797366)
-
-# let p = gen_price_series 
-~initial_value:1. ~drift:0. ~volatility:0.10 
-~timestep:(1. /. 100000.) ~duration:1.
-in vsr p;;
-- : float * float = (6.25414645146637493, 6.36145002711934549)
-─ 
-*)
-
-(* symmetric concentrator  *)
-let concentrator p_0 rangeMultiplier = 
-  assert(rangeMultiplier > 1.);
-  let sqlambda = (sqrt rangeMultiplier) in (* > 1 *)
-  0.5 *. sqlambda /. (sqlambda -. 1.0) *. 1. /. sqrt(p_0)
-;;
-
-(* feeq = capital(quote) * eta * (concentrator p_0 rangeMultiplier) * vsrq(eta) *)
-(* feeb = capital(quote) * eta * concentrator * vsrb(eta) *)
-
-(* 
-0. gridstep GBM parameters 
-initial value = 1, drift = 0, volatility in [0.055: 0.095], 
-timestep = 0.001, duration = 1.; 
-1. choose rangeMultiplier = 1.4 (symmetric rangeMultiplier);
-2. symmetric rangeMultiplier implies p_0 * initialBase =  initialQuote [equipartition]; 
-   hence for p_0=1, initialBase =  initialQuote
-3. vary fee (just like gridstep) between 1.001 and 1.200
-4. for fixed (vol,fee) compute mean return
-(MtM au prix initial: 
-a) append p(0), or not if faster 
-b) return = feequote + feebase); do quadratic fit and plot 
-*)
-
-let unitFees ~viscosity:eta ~volatility:vol = 
-  let entryPrice = 1.0 in
-  let rangeMultiplier = 1.4 in
-  let sqlambda = (sqrt rangeMultiplier) in (* > 1 *)
-  let prefactor = sqlambda /. (sqlambda -. 1.0) /. (2. *. (sqrt entryPrice)) in
-  let ds = gbrowmo 
-  ~initial_value:entryPrice ~drift:0. ~volatility:vol 
-  ~timestep:0.001 ~duration:1. in
-  let viscous_price_series,_,_ = 
-    vf ~driver_series:ds
-       ~viscosity:eta in
-  let viscous_price_series_without_time = Array.map (fun (x,y) -> y) viscous_price_series in
-  let vsrq, vsrb = vsr viscous_price_series_without_time in
-  let unitQuoteFee = prefactor *. eta *. vsrq in
-  let unitBaseFee  = prefactor *. eta *. vsrb in
-  (* assuming pfinal = pinitial to simplify *)
-  unitQuoteFee +. entryPrice *. unitBaseFee 
-;;
-
-(* Hamza verification *)
-let unitFees_H ~viscosity:eta ~driver_series:ds = 
-  let entryPrice = 1.0 in
-  let rangeMultiplier = 1.4 in
-  let sqlambda = (sqrt rangeMultiplier) in (* > 1 *)
-  let prefactor = sqlambda /. (sqlambda -. 1.0) /. (2. *. (sqrt entryPrice)) in
-  let viscous_price_series,_,_ = 
-    vf ~driver_series:ds
-       ~viscosity:eta in
-  let viscous_price_series_without_time = Array.map (fun (x,y) -> y) viscous_price_series in
-  let vsrq, vsrb = vsr viscous_price_series_without_time in
-  let unitQuoteFee = prefactor *. eta *. vsrq in
-  let unitBaseFee  = prefactor *. eta *. vsrb in
-  unitQuoteFee, unitBaseFee, prefactor, vsrq, vsrb 
-;;
-
-(* 
-how do unitFees scale with vol (ceteris paribus)? 
-*)
-let fees_repeat ~nb_of_rays:n ~viscosity:eta ~volatility:vol = 
-  let simres = ref 0. in
-  for i = 1 to n
-    do 
-     simres := !simres +. (unitFees ~viscosity:eta ~volatility:vol);
-   done;
-!simres /. (float_of_int n)  
-;;
-
-(* fees_repeat ~nb_of_rays:1000 ~viscosity:0.01 ~volatility:0.055;;
-- : float = 0.00219066824053387168 *)
-
-
-let fees_repeat_eta ~nb_of_rays:n ~volatility:vol = 
-  let output = Array.make 200 (0.,0.) in
-  for i = 1 to 200
-  do 
-   let fee = (float_of_int i) *. 0.001 (* 0.001 -> 0.2 par step = 0.001 *) in
-   let mean_return = fees_repeat ~nb_of_rays:n ~viscosity:fee ~volatility:vol in
-   output.(i - 1) <- (fee, mean_return);
-  done;
-  let filename = "vs/unimr"^(string_of_float vol) in
-  array2_to_csv ~filename:filename ~array2:output
-;;
 
 (* 
 let ps = Array.sub price_series 0 3;;
@@ -672,7 +311,8 @@ print_float ps.(999); print_newline ();
 ;; 
 *)
 
-(* I the index set for the various state elements, depends only on rangeMultiplier and step *)
+(* I = the index set for the various state elements, 
+   depends only on rangeMultiplier and step *)
 (* let build_index_set rangeMultiplier step = 
   int_of_float (log(rangeMultiplier) /. log(step))  
 ;; *)
@@ -696,53 +336,10 @@ let generate_price_grid
     (fun i -> let expo = float_of_int (i - mid) in
               p0 *. gridstep ** (expo)) 
 ;;
-(* 
-   NB: the price grid is uniform in p0 ;
-   OPTIM: qd on itere le long de la price_series
-   en utilisant les mêmes paramètres,
-   et donc en ne changeant que le mid-price  
-   definir statiquement le price_grid_skeleton := le price_grid pour p_0=1
-   et faire ensuite a chaque composition
-   Array.map (fun x -> p0 * x) price_grid_skeleton
-   ou même 
-   let pg = price_grid_as_a_function new_starting_price in
-   et ensuite on compose: sigma(p2, d, (sigma(p1, d, sig(p0, d, qB0));
-   si on a aussi acces au current_volatility et la Garchery map step(current_vol)
-   on peut aussi mettre à jour le step
-
-   NB2: on peut eviter de regenerer la meme grille de prix quand on fait tire 10000 realisations contre les mêmes parametres
-*)
 
 (* 
    NB: number of points for various values of gridstep
    given by log(rangeMultiplier) /. log(gridstep);; 
-*)
-
-let generate_price_grid_shifted
-~half_number_of_price_points:mid 
-~shift:k
-~gridstep:gridstep 
-~initial_price:p0 = 
-let refined_gridstep = gridstep ** (1. /. (float_of_int k)) in
-let refined_mid = mid * k in
-  Array.init 
-    (2 * refined_mid + 1) 
-    (fun i -> let expo = float_of_int (i - refined_mid) in
-              p0 *. refined_gridstep ** (expo)) 
-;;
-
-(* 
-let aux ~rangeMultiplier:lambda n = 
-(* eg lambda = 1.4 *)
-print_string "nb of points on half grid: ";
-for i = 1 to n 
-do 
-let gridstep = 1. +. 0.001 *. (float_of_int i) in
-print_int(int_of_float (log(lambda) /. log(gridstep)));
-(* log(lambda)/log(ratio) = nb_of_points *)
-print_string ", ";
-done
-;; 
 *)
 
 
@@ -807,7 +404,7 @@ done
 *)
 
 (* --------------------- KANDLE SIMULATION --------------------- *)
-(*
+(* 
 inputs: 
 1) strat parameters = price grid, and capital in cash (quote, written qB) and cashmix
 2) start = when to enter game and duration = how long to play
@@ -818,9 +415,6 @@ return (the stochastic integral of strat against price)
 number of up- and down-crossings
 NB: duration could be a stopping time in general, eg looking at a price-crossing event 
 NB: no need to slice the price series as the price series array is read only
-
-NB: we allow for allocation of vQ initial using alpha = v'Q/vQ = fraction de cash dévolue à Base 
-[this is the same alpha as in the cash ratio theory] 
 *)
 
 let sim 
@@ -835,7 +429,8 @@ let sim
 ~price_series:price_series                       (* series of price *)
 =
 (* check we have enough points in the price series *)
-assert(start + duration <= (Array.length price_series));
+if not (start + duration <= (Array.length price_series))
+  then failwith "sim: number of steps required > length of price series";
 
 (* state: static part *)
 let mid = int_of_float (log(rangeMultiplier) /. log(gridstep)) in
@@ -848,6 +443,9 @@ let price_grid = generate_price_grid
 ~half_number_of_price_points:mid 
 ~gridstep:gridstep 
 ~initial_price:p0 in
+
+(* print_string "> price grid:\n "; 
+pra 12 price_grid;  print_string "\n"; *)
 
 (* here we divide the initial quote capital *)
 (* alpha = 0.5 means starting a 50/50 position *)
@@ -862,12 +460,6 @@ populate_book
 ~price_grid:price_grid
 in
 
-(* 
-pra 12 bid; print_string "\n";
-print_float (portfolio_B mid bid price_grid); print_newline();
-pra 12 ask; print_string "\n";
-print_float (p0 *. (portfolio_A mid (!ia) ask)); print_newline(); 
-*)
 
 (*  tracking up- and down-crossings *)
 let rebu = ref 0 in
@@ -884,17 +476,9 @@ let upmove q  =
       when price has escaped up, in which case price_grid would return 
       an "index out of bounds" error 
   *)
-  
     do
     (* bb0aa =a=>  bbb0a *)
     incr rebu; (* we count the number of upcrossings/rebal up *)
-
-    (* print_string "new price "; print_float(q); print_string "@ time "; print_int(i); print_newline();
-    print_string "old price ";print_float(!current_price); print_newline(); *)
-    (* pra 12 price_grid; print_newline(); *)
-    (* print_string "> bids: "; print_newline(); pra 12 bid; print_newline();
-    print_string "> asks: "; print_newline(); pra 12 ask; print_newline(); *)
-
     let iia = !ia in 
     (* down transport rule *)
     bid.(iia - 1) <- ask.(iia) *. price_grid.(iia) /. price_grid.(iia - 1); 
@@ -911,13 +495,6 @@ and downmove q =
     do
     (* bb0aa =b=>  b0aaa *)
     incr rebd; (* we count the number of downcrossings/rebal down *)
-
-    (* print_string "new price "; print_float(q); print_string "@ time"; print_int(i); print_newline();
-    print_string "old price ";print_float(!current_price); print_newline(); *)
-
-    (* pra 12 price_grid; print_newline();
-    pra 12 bid; print_newline();
-    pra 12 ask; print_newline(); *)
     let iib = !ib in 
     (* up transport rule *)
     ask.(iib + 1) <- bid.(iib);
@@ -940,16 +517,6 @@ let onestep q =
     (* new current_price *)
   current_price := q
 in
-(* pra 6 price_grid; print_newline();
-pra 6 bid; print_newline();
-print_float (portfolio_B mid bid price_grid); print_newline();
-pra 6 ask; print_newline();
-print_float (p0 *. (portfolio_A mid (!ia) ask)); print_newline(); *)
-(* we gridstepk up prices one at a time and update state *)
-
-(* print_string "p0>"; print_float price_series.(start); print_newline();
-print_string "p1>"; print_float price_series.(start + 1); print_newline();
-print_string "p last>"; print_float price_series.(start + duration -1); print_newline(); *)
 
 (* 
 we consume duration prices, the first one goes to p0, 
@@ -966,65 +533,34 @@ let qAf = portfolio_A mid (!ia) ask
 and qBf = portfolio_B (!ib) bid price_grid in
 let mtmf = qAf *. !current_price +. qBf in
 let mtmi = qB in (* qB since we enter only with cash *)
-  (*
-  print_string ("gridstep = ");
-  print_float (step -. 1.);
-  print_string ("start  = ");
-  print_int (start + 1);
-  print_string (" -> return = ");
-  print_float(mtmf /. mtmi -. 1.); 
-  print_string ("\n");
-  print_string "current_price = ";
-  print_float !current_price;
-  print_string ("\n"); 
-  *)
-  (* 
-  pra 6 price_grid; print_newline();
-  pra 6 bid; print_newline();
-  print_float (portfolio_B mid bid price_grid); print_newline();
-  pra 6 ask; print_newline();
-  print_float (!current_price *. (portfolio_A mid (!ia) ask)); print_newline(); 
-  *)
-(* print_float(!current_price);
-print_string("\n");
-print_float mtmf;
-print_string("\n");
-print_float mtmi;
-print_string("\n"); *)
 (mtmf /. mtmi -. 1.), 
-!rebu, 
-!cross_above, 
-!rebd,  !cross_below, 
+!rebu, !cross_above, !rebd,  !cross_below, 
 price_series.(start + duration - 1)
 ;;
 
 (* test de sim *)
-let test_sim ~duration:x ~numberOfPoints:n  ~gridstep:r = 
-let dt = 0.0001 in
+let test_sim ~duration:x = 
 let ps = gen_price_series 
-  ~initial_value:100. ~drift:0. ~volatility:0.2 
-  ~timestep:dt ~duration:x in
-let duration = int_of_float (x /. dt) in
+  ~initial_value:1. ~drift:0. ~volatility:0.2 
+  ~timestep:0.001 ~duration:1. in
 sim 
   (* ~rangeMultiplier:(1.01 ** 20.000_000_1) ~gridstep:1.01  *)
-  (* ~rangeMultiplier:(1.04 ** 5.000_000_1)  ~gridstep:1.04  *)
-  ~rangeMultiplier:(1.04 ** ((float_of_int n) +. 0.000_001))  ~gridstep:r  
+  ~rangeMultiplier:(1.04 ** 5.000_000_1)  ~gridstep:1.04 
   ~quote:10_000.
   ~cashmix:0.5
-  ~duration:duration
+  ~duration:x
   ~price_series:ps
   ~start:0
 ;;
 
-let test_sim_rep ~repeats:n ~duration:x ~numberOfPoints:p  ~gridstep:r = 
+let test_sim_rep ~repeats:n ~duration:x = 
   let output = Array.make n (0., 0, 0, 0, 0, 1.) in
   for i = 1 to n
   do 
    (* ret, uc, ux, dc, dx  *)
-   output.(i - 1) <- test_sim ~duration:x ~numberOfPoints:p  ~gridstep:r;
+   output.(i - 1) <- test_sim ~duration:x;
   done;
-  let tag = "(string_of_int p)"^"_"^"(string_of_float r)" in
-  let file_string_out = "csv/redacted/test_sim_"^tag^".csv" in
+  let file_string_out = "test_sim.csv" in
   let oc = open_out file_string_out in
   output_string oc  "return, up crossings, up exits, down crossings, down exits, final price\n";
   Array.iter 
@@ -1047,29 +583,8 @@ let test_sim_rep ~repeats:n ~duration:x ~numberOfPoints:p  ~gridstep:r =
   close_out oc
 ;;
 
-(* Tests *)
-test_sim ~duration:1. ~numberOfPoints:10 ~gridstep:1.04;;
-(* - : float * int * int * int * int * float =
-(-0.156906973883617185, 10, 0, 18, 0, 73.9913339506879453) *)
-let test_rep () = test_sim_rep ~repeats:100 ~duration:1. ~numberOfPoints:10  ~gridstep:1.04
-;;
 
- (* 
 
- somme translatée 
- pg(mid, gs) + 
- pg(mid+1/2 gs, gs)
- ST k (pg(p0, mid, gs)) :=
- pg(p0, k*mid, gs/k)
-
-  b_0_a_ +
-  _b_0_a = 
-  bb00aa -a-> bb00aa
-    
-  *)
-
-(* SIM STOPPED *)
-(* same as sime above; but now we stop if the price exits the range *)
 let sim_stopped 
  ~rangeMultiplier:rangeMultiplier 
  ~gridstep:gridstep 
@@ -1093,6 +608,8 @@ let price_grid = generate_price_grid
 ~half_number_of_price_points:mid 
 ~gridstep:gridstep 
 ~initial_price:p0 in
+
+(* pra 8 3 price_grid; *)
  
 let qB' = alpha *. qB in
 let qA =  (1. -. alpha) *. qB /. p0 in
@@ -1166,7 +683,7 @@ let upmove q  =
      current_price := q
  in
 
-(* test price_series not exhausted and price still  in range *)
+(* test price_series not exhausted and price still in range *)
 while (!current_index < price_series_length &&
        not !lower_exit && 
        not !upper_exit) 
@@ -1176,18 +693,13 @@ while (!current_index < price_series_length &&
     done
 ;
 
-(* print_string "exit index/exit price = "; 
+(* print_string "-->  exit index/price = "; 
 pad_float (float_of_int !current_index) 3 0;
 print_string ", ";
 pad_float !current_price 7 5;
 print_string "\n"; *)
 
-(* price grid *)
-(* print_string "> price grid:\n "; 
-pra 12 3 price_grid;  print_string "\n"; *)
-
 (* counting money *)
-
 let qAf = portfolio_A mid (!ia) ask 
 and qBf = portfolio_B (!ib) bid price_grid in
 let mtmf = qAf *. !current_price +. qBf in
@@ -1202,7 +714,7 @@ mtmf /. mtmi, (* growth rate, because more compositional *)
 (* test sim_stopped *)
 let ps = 
   gen_price_series 
-  ~initial_value:100. ~drift:0. ~volatility:0.2 
+  ~initial_value:1. ~drift:0. ~volatility:0.2 
   ~timestep:0.001 ~duration:1. in
 sim_stopped 
   ~rangeMultiplier:(1.01 ** 2.000_1) 
@@ -1213,77 +725,8 @@ sim_stopped
   ~price_series:ps
 ;;
 
-(* test de sim *)
-let test_sim_stopped ~numberOfPoints:n  ~gridstep:r = 
-let dt = 0.0001 in
-let ps = gen_price_series 
-  ~initial_value:100. ~drift:0. ~volatility:0.2 
-  ~timestep:dt ~duration:1. in
-sim_stopped 
-  (* ~rangeMultiplier:(1.01 ** 20.000_000_1) ~gridstep:1.01  *)
-  (* ~rangeMultiplier:(1.04 ** 5.000_000_1)  ~gridstep:1.04  *)
-  ~rangeMultiplier:(r ** ((float_of_int n) +. 0.000_001))  ~gridstep:r  
-  ~quote:10_000.
-  ~cashmix:0.5
-  ~price_series:ps
-  ~start:0
-;;
-
-let test_sim_stopped_rep ~repeats:n ~numberOfPoints:p  ~gridstep:r = 
-  let output = Array.make n (0., 0, false, 0, false, 0, 1.) in
-  for i = 1 to n
-  do 
-   (* ret, uc, ux, dc, dx  *)
-   output.(i - 1) <- test_sim_stopped ~numberOfPoints:p  ~gridstep:r;
-  done;
-  let tag = (string_of_int p)^"_"^(string_of_float r) in
-  let file_string_out = "csv/redacted/test_sim_stopped_"^tag^".csv" in
-  let oc = open_out file_string_out in
-  output_string oc  "return, up crossings, up exits, down crossings, down exits, stop index, final price\n";
-  Array.iter 
-    (
-      fun (ret, uc, ux, dc, dx, si, fp) -> 
-      output_string oc (string_of_float (ret -. 1.));
-      output_string oc ", ";
-      output_string oc (string_of_int uc);
-      output_string oc ", ";
-      output_string oc (string_of_bool ux);
-      output_string oc ", ";
-      output_string oc (string_of_int dc);
-      output_string oc ", ";
-      output_string oc (string_of_bool dx);
-      output_string oc ", ";
-      output_string oc (string_of_int si);
-      output_string oc ", ";
-      output_string oc (string_of_float fp);
-      output_char oc '\n'
-    )
-  output;
-  close_out oc
-;;
-
-(* Tests *)
-(* test_sim_stopped ~numberOfPoints:10 ~gridstep:1.04;; *)
-(* - : float * int * int * int * int * float =
-(-0.156906973883617185, 10, 0, 18, 0, 73.9913339506879453) *)
-let test_stopped_rep () = test_sim_stopped_rep ~repeats:100 ~numberOfPoints:10  ~gridstep:1.04
-;;
-
-let () =
-let repeats = int_of_string Sys.argv.(1) 
-and numberOfPoints =  int_of_string Sys.argv.(2) 
-and gridStep = float_of_string Sys.argv.(3) in
-test_sim_stopped_rep 
-~numberOfPoints:numberOfPoints 
-~gridstep:gridStep 
-~repeats:repeats
-;;
-
 (* 
 shift up/down price grid on new exit current_price (q); 
-* on implemente un reset sur une condition de prix
-    chaque fois que p up/down-cross le dernier ask/bid on 
-    re-split 50/50 modulo un swap implicite et on repart
 *)
 
 let rec sim_reset 
@@ -1322,7 +765,6 @@ and hix'  = if (upper_exit) then hix + 1 else hix
 and dc' = dc + rebd
 and lox'  = if (lower_exit) then lox + 1 else lox
 in
-
 if (current_index_in_ps < Array.length ps)
   then 
   sim_reset 
@@ -1338,9 +780,75 @@ if (current_index_in_ps < Array.length ps)
   ~loexit:lox'
   ~hiexit:hix'
  else 
-tg', uc', hix',  dc', lox'
+tg', uc', hix',  dc', lox', current_price_in_ps
 ;;
 
+let test_sim_reset_2_offers ~gridstep:gridstep ~volatility:vol = 
+  let ps =
+  gen_price_series 
+    ~initial_value:1000. ~drift:0. ~volatility:vol
+    ~timestep:0.001 ~duration:1. in
+  
+  let rangeMultiplier = gridstep ** 1.000_1
+  and quote = 10_000.0
+  and mix = 0.5 in
+  (* pra 8 4 ps; *)
+  sim_reset
+    ~rangeMultiplier:rangeMultiplier 
+    ~gridstep:gridstep
+    ~quote:quote
+    ~cashmix:mix
+    ~start:0
+    ~price_series:ps
+    ~total_gamma:1.
+    ~uc:0
+    ~hiexit:0
+    ~dc:0
+    ~loexit:0
+;;
+
+let test_sim_reset_2_offers_rep ~repeats:n ~gridstep:gridstep ~volatility:vol = 
+  let output = Array.make n (0., 0, 0, 0, 0, 1.) in
+  for i = 1 to n
+  do 
+   (* ret, uc, ux, dc, dx, fp  *)
+   output.(i - 1) <- test_sim_reset_2_offers ~gridstep:gridstep ~volatility:vol;
+  done;
+  let file_string_out_prefix = "alms/csv/test_sim_reset_2_offers_rep_" in
+  let file_string_out_suffix = ".csv" in
+  let file_string_mid = (string_of_float gridstep)^"_"^(string_of_float vol) in
+  let file_string_out = file_string_out_prefix^file_string_mid^file_string_out_suffix in
+  let oc = open_out file_string_out in
+  output_string oc  "return, up crossings, up exits, down crossings, down exits, final price\n";
+  Array.iter 
+    (
+      fun (ret, uc, ux, dc, dx, fp) -> 
+      output_string oc (string_of_float (ret -. 1.0)); 
+      (* ^^ on parle en return *)
+      output_string oc ", ";
+      output_string oc (string_of_int uc);
+      output_string oc ", ";
+      output_string oc (string_of_int ux);
+      output_string oc ", ";
+      output_string oc (string_of_int dc);
+      output_string oc ", ";
+      output_string oc (string_of_int dx);
+      output_string oc ", ";
+      output_string oc (string_of_float fp);
+      output_char oc '\n'
+    )
+  output;
+  close_out oc
+;;
+
+(* for compiled exec *)
+let () =
+  let nbRep = int_of_string Sys.argv.(1) 
+  and gridStep =  float_of_string Sys.argv.(2) 
+  and vol =  float_of_string Sys.argv.(3) 
+in 
+test_sim_reset_2_offers_rep nbRep gridStep vol
+;;
 
 (* test sim_reset vs sim (no reset) *)
 (* maybe sim_reset vs  *)
@@ -1377,7 +885,7 @@ sim
     ~price_series:ps  
 ;;
 
-(* let ps = 
+let ps = 
   gen_price_series 
     ~initial_value:1. ~drift:0. ~volatility:0.1 
     ~timestep:0.001 ~duration:1. in
@@ -1389,7 +897,7 @@ sim
     ~start:0
     ~duration:(Array.length ps)
     ~price_series:ps
-;; *)
+;;
   
 
 
@@ -1413,7 +921,7 @@ let bundle_sim ~start:start ~duration:duration ~repetitions:repetitions ~price_s
     do
     (* fst arg of siim = where to start in the price series
        snd arg = how many prices to consume in this series *)
-    simres.(i) <- siim (start + i * duration) duration
+    simres.(i) <- siim (start + i * duration) duration 
     done;
     Array.iter (fun (f,nb_upcrossing, nb_downcrossing, nb_high_exits, nb_low_exits, final_price) -> 
       print_float f; 
@@ -1425,6 +933,8 @@ let bundle_sim ~start:start ~duration:duration ~repetitions:repetitions ~price_s
       print_int nb_high_exits; 
       print_string ", ";
       print_int nb_low_exits; 
+      print_string ", ";
+      print_float final_price; 
       print_string "\n") simres
   ;;
   
@@ -1473,7 +983,7 @@ for i = 1 to nbs
   do
   let gridstep = (1. +. (float_of_int i) *. tick) in
   (* gridstep < rangeMultiplier because gridstep <= 1 + maxtick <=  rangeMultiplier *)
-  let r, u, hix, d, lox, fp = 
+  let r, u, hix, d, lox, final_price = 
   sim 
   ~rangeMultiplier:rangeMultiplier (* we fix the rangeMultiplier and vary only gridstep *)
   ~gridstep:gridstep
@@ -1561,7 +1071,6 @@ let bc
 ~volatility:vol 
 ~rangeMultiplier:rangeMultiplier 
 = 
-(* mean ret,  std ret, mean xing *)
 let mr, sr, mc = 
 barg 
 ~number_of_rays:n
@@ -1585,45 +1094,52 @@ let maxsh = ref (-1.0) in
 let index = ref 0 in
 for i = 0 to (Array.length mr - 1)
  do
- let sh = mr.(i) /. sr.(i) in
+ let sh = mr.(i)/.sr.(i) in
  if  sh > !maxsh then (maxsh:= sh; index:=i)
  done;
  (* print_string "grid_step, max_sharpe, mean_return, std_return, mean_xing"; *)
 ((float_of_int !index) *. 0.001, !maxsh, mr.(!index),sr.(!index),mc.(!index))
 ;;
 
-(* 
-let () =
-let number_of_rays = int_of_string Sys.argv.(1) 
+(* to execute compiled code *)
+let f () =
+let nbr = int_of_string Sys.argv.(1) 
 and vol =  float_of_string Sys.argv.(2) 
 and rangeMultiplier = float_of_string Sys.argv.(3)
 in
 (* we slice the rangeMultipler into 50 ticks *)
 let tronc = (rangeMultiplier -. 1.)/. 50. in
-
-print_string "# range, best ratio, max sharpe, mean ret, std ret, mean crossing\n";
-
 for i = 1 to 50
 do
 let range = 1. +. (float_of_int i) *. tronc in
 let bestgs, maxsh, mr, sr, mc =
 bc 
-~number_of_rays:number_of_rays 
+~number_of_rays:nbr 
 ~volatility:vol
 ~rangeMultiplier:range 
 in
 (* print_string Sys.argv.(1); print_string " reps, vol ";
 print_string Sys.argv.(2); print_string ", range ";
 print_string Sys.argv.(3); print_string "\n"; *)
-print_float range;  print_string ", ";
-print_float bestgs; print_string ", ";
-print_float maxsh;  print_string ", ";
-print_float mr;     print_string ", ";
-print_float sr;     print_string ", ";
-print_float mc;     print_string ", "; 
+print_string "-> gridstep(range) ";
+print_float bestgs;
+print_string "(";
+print_float range;
+print_string "), max sharpe ";
+print_float maxsh;
+(* pad_float maxsh 5 4; *)
+print_string ", mean ret ";
+print_float mr; 
+(* pad_float mr 5 4; *)
+print_string ", std ret ";
+(* pad_float sr 5 4; *)
+print_float sr; 
+print_string ", mean xing ";
+print_float mc; 
+(* pad_float mc 5 4; *)
 print_string "\n";
 done
-;; *)
+;;
 
 (* 
 parametres:

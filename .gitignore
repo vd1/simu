@@ -6,3 +6,12 @@ Archive.zip
 *.cmx
 *.cmi
 *.cmo
+*.o
+csv/redacted/myenv/
+myenv/
+*.aux
+*.log
+*.bbl
+*.fls
+*.fdb_latexmk
+*.synctex.gz
