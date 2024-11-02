@@ -814,7 +814,7 @@ let test_sim_reset_2_offers_rep ~repeats:n ~gridstep:gridstep ~volatility:vol =
    (* ret, uc, ux, dc, dx, fp  *)
    output.(i - 1) <- test_sim_reset_2_offers ~gridstep:gridstep ~volatility:vol;
   done;
-  let file_string_out_prefix = "test_sim_reset_2_offers_rep_" in
+  let file_string_out_prefix = "alms/csv/test_sim_reset_2_offers_rep_" in
   let file_string_out_suffix = ".csv" in
   let file_string_mid = (string_of_float gridstep)^"_"^(string_of_float vol) in
   let file_string_out = file_string_out_prefix^file_string_mid^file_string_out_suffix in
