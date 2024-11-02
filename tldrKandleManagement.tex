@@ -32,13 +32,13 @@
 
 \begin{document}
 \maketitle
-% \large
 
 You need to install ocaml. 
 
 Eg via the \href{https://opam.ocaml.org/doc/Install.html}{opam package manager}
 
-\section{Setup price series}
+\section{Setup}
+\subsection{Setup price series}
 
 To run a test we first need to get a price series. 
 
@@ -67,7 +67,7 @@ let gbrowmo
 
 Both methods output a price series as an array of floats.
 
-\section{Setup Kandle}
+\subsection{Setup Kandle}
 
 To define a Kandle instance one needs:
 \\ - a (relative) price grid 
@@ -82,7 +82,7 @@ The relative price grid is defined by picking any 2 of the following 3 parameter
 The initial price (or entry price) 
 used to center the grid is taken from the price series (hence the name `relative' price grid).
 
-\section{Simulation}
+\section{Plain simulation}
 A simulation is the interaction of a Kandle with a price series.
 
 The output of a simulation run is a 6-uple:
@@ -128,7 +128,7 @@ The compiled code will generate a csv file \ttt{return\_vs\_final\_price\_scatte
 The csv file can be visualised using a python script called \ttt{hist.py} with similar syntax \ttt{python hist.py 10 1.25}.
 
 \IG{300pt}
-{png/return_vs_final_price_scatter.png}
+{alms/png/return_vs_final_price_scatter.png}
 {\label{sim} On the $x$-axis the final price, on the $y$-axis the return. In red (green) realisations with a negative (positive) return.}
 
 \section{Simulation with exit}
@@ -163,7 +163,7 @@ Fig.~\ref{simstopped} shows an example of a 1000 runs, 10000 steps each (under 2
 We see the green and red walls at the ends of the range near the $\pm20\%$ mark.
 
 \IG{250pt}
-{png/return_vs_final_price_scatter_1.05_4_stopped.png}
+{alms/png/return_vs_final_price_scatter_1.05_4_stopped.png}
 {\label{simstopped} On the $x$-axis the final price, on the $y$-axis the return. The Kandle grid has 4 points (on each side of the entry price of $100$), with a ratio of $1.05$.}
 
 
@@ -178,26 +178,115 @@ with some low amount of noise induced by the path-dependent crossings.
 
 
 \IG{250pt}
-{png/return_vs_final_price_scatter_1.02_0.08.png}
+{alms/png/return_vs_final_price_scatter_1.02_0.08.png}
 {\label{simReset} The regression line is close to that of a buy-and-hold strategy
 with half the cash invested in the risky asset.}
 
 
-\subsection{Analysis of the self-updating Kandle (sim reset)}
-First, we notice that this is different from a simple MM strategy which would translate the grid each time the price moves (at a given frequency),
+\subsection{Discussion of price-tracking Kandle (sim reset)}
+\NB[2] price-tracking Kandle is subtly different from a simple MM strategy which translates its price grid each time the price moves (at a given frequency),
 regardless of whether one of its offers was consumed or not. It would be interesting to simulate that as well. The difference is that in the 
 latter case even in the absence of crossing the price stays always $\eps$ away from the current price.
 
+Todo: implement the vanilla MM strategy and measure the payoff difference (MM should be better).
 
-We can `neutralise' the determinstic part of the pay-off by adding $-\ba S_t$ (eg by shorting a certain amount $\ba$ of the underlying on a perp market,
-or by borrowing some of the underlying on a mending platform).
-For large ratios (aka grid steps), there are $<1$ crossings on average and the constant is very nearly $\ba =\frac12$ (ie a complete buy-and-hold).
+Idea: 
+One can `neutralise' the determinstic part of the pay-off by adding $-\ba S_t$ (eg by shorting a certain amount $\ba$ of the underlying on a perp market,
+or by borrowing some of the underlying on a mending platform). The exact offset to be determined by fitting a regression line
+to a numerical experiment - will depend on $(r,\sig)$.
+
+For large ratios $r>1.1$ (aka grid steps), 
+there are $<1$ crossings on average and the constant is very nearly $\ba =\frac12$ (ie a complete buy-and-hold).
 As $r$ decreases, the mean number of crossings increases and the constant $\ba$ seem to decrease.
-Investigate emprically.
+To investigate empirically.
 
 \IG{200pt}
-{png/return_vs_final_price_scatter_1.002_0.07.png}
+{alms/png/return_vs_final_price_scatter_1.002_0.07.png}
 {adjusted return vs exit price (ratio = 1.002, vol = 0.07)}
 
+\QS[1] Is there for given $\sig$ a value $r\st(\sig)$ of $r$ that maximises the mean return? [similar to prior work done
+for plain Kandle]
+
+Todo: Try same experiments with multiple price points (not just 2)
+
+Can we combine sim with reset with a stop loss? Eg, is it useful to stop resetting after $k$ moves,
+or a certain minimum residual capital (or on a momentum signal)?
+
+A small remark: concretely, when ruining on chain, price-tracking Kandle does not have access to the next price (as the simulation does)
+only that $p_{n+1}>r p_n$;
+to correct this one can use multiple offers to improve the upper bound,
+and/or use an oracle at update time (eg consult another liquidity source).
+
+
+\subsection{Analysis of sim reset}
+
+Let $\al\in[0,1]$ be the cash ratio (amount of initial capital kept in quote).
+Set $\al':=1-\al$ to simplify notations.
+
+The total gain under a given price run is:
+\EQ{
+\Ga(\al) 
+&=&
+(\al+\al' r)^{n_u}
+(\al+\al'/r)^{n_d}
+}
+where $n_u$ is the number of up-crossings, $n_d$
+is the number of down-crossings along the price trajectories.
+
+The crossing numbers are random and only depend on vol-and-grid, $\sig$ and $r$.
+
+As
+$\al+\al' r>1$ (barycenter of $1$ and $r>1$), and  
+$\al+\al'/r<1$ (barycenter of $1$ and $1/r<1$),
+it follows that $\Ga>1$ ie the strategy is profitable for a given trajectory as soon as $n_u>n_d$.
+
+In partcular if $\al=\al'=\frac12$, we get:
+\AR{
+\log(\Ga(1/2)) 
+&=&
+n_u \log(\frac{1+r}2) + 
+n_d \log(\frac{1+1/r}2)
+\\&=&
+N 
+(
+f_u \log(\frac{1+r}2) + 
+f_d \log(\frac{1+1/r}2)
+)
+}
+where in the last line we assume $N=n_u+n_d>0$ (not always true! especially for large ranges).
+
+The above is $>0$ iff:
+\AR{
+    f_d/f_u
+    &\leq&
+    \dfrac{\log(1+r) -\log 2}{\log 2-\log(1+r\mo)} =: k(r)
+}
+where $k(r)\geq 1$ is increasing and converges to $\log(1+r)/\log(2) -1$ for large $r$.
+This suggests that  larger $r$s are more likely to generate profits. To make sure we need
+to study how the $f_d$, $f_u$ distribution depends on $r$. It seems unlikey but it could be that larger $r$ are biased 
+downwards, ie $f_d/f_u$ is increasing function of $r$. [in sims up and down crossings 
+look equally likely]
+
+Todo: study the distribution of $f_u$ as a function of $r$ and $\sig$. [Also look at std]
+
+We can see the effect of changing $\al$.
+
+If $\al=0$ (base only), $\Ga(0) = r^{n_u-n_d}$. If we go full base,
+we win iff the process crosses more up than down.
+
+If $\al'=0$ (quote only), $\Ga(1) = 1$. Indeed if we never buy the underlying,
+all that can happen is the execution of a bid, 
+the output of which that strategy re-sells immmediately at same price (assuming no fees, no slippage),
+and therefore the initial wealth never changes. Ie (modulo fees and slippage), setting $\al=0$ amounts to not playing.
+
+
+\NB\ Euler-Maruyama for large $\sqrt{dt}$, large $\sig$ can lead to negative prices in a GBM;
+so better use the integral form. 
 \end{document}
 
+app.hellosign.com/t/8e4190ab9fd7cb8acf86180f2fb42c5011d23163?
+utm_campaign=multisigner_complete&
+utm_source=default&
+utm_channel=product_promo&
+utm_medium=email&
+utm_content=original
