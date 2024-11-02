@@ -6,6 +6,7 @@ Archive.zip
 *.cmx
 *.cmi
 *.cmo
+*.o
 csv/redacted/myenv/
 myenv/
 *.aux

@@ -609,7 +609,7 @@ let price_grid = generate_price_grid
 ~gridstep:gridstep 
 ~initial_price:p0 in
 
-pra 8 3 price_grid;
+(* pra 8 3 price_grid; *)
  
 let qB' = alpha *. qB in
 let qA =  (1. -. alpha) *. qB /. p0 in
@@ -693,11 +693,11 @@ while (!current_index < price_series_length &&
     done
 ;
 
-print_string "-->  exit index/price = "; 
+(* print_string "-->  exit index/price = "; 
 pad_float (float_of_int !current_index) 3 0;
 print_string ", ";
 pad_float !current_price 7 5;
-print_string "\n";
+print_string "\n"; *)
 
 (* counting money *)
 let qAf = portfolio_A mid (!ia) ask 
@@ -839,6 +839,15 @@ let test_sim_reset_2_offers_rep ~repeats:n ~gridstep:gridstep ~volatility:vol =
     )
   output;
   close_out oc
+;;
+
+(* for compiled exec *)
+let () =
+  let nbRep = int_of_string Sys.argv.(1) 
+  and gridStep =  float_of_string Sys.argv.(2) 
+  and vol =  float_of_string Sys.argv.(3) 
+in 
+test_sim_reset_2_offers_rep nbRep gridStep vol
 ;;
 
 (* test sim_reset vs sim (no reset) *)
