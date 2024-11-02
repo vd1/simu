@@ -12,3 +12,6 @@ myenv/
 *.aux
 *.log
 *.bbl
+*.fls
+*.fdb_latexmk
+*.synctex.gz
