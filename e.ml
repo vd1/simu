@@ -2,6 +2,20 @@
 
 TODO:
 
+* 
+call sigmaF = volatility of GBM recovered from R(\delta t) [Farhat]
+call sigmaH = sigma(p)/pzero [Hamza]
+study difference bewteen sigmaF and sigmaH
+
+* we allow for allocation of vQ initial using alpha = v'Q/vQ = fraction de cash dévolue à Base 
+[this is the same alpha as in the cash ratio theory]
+
+* implementer un reset sur une condition de prix? 
+    chaque fois que p up/down-cross le dernier ask/bid on resplit 50/50 modulo un swap et on repart
+    1. etape = tester si le prix sort de l'intervalle
+
+=======
+>>>>>>> d4984dfd64475f96b7bef5fcdb1bb4ca821d253a
 * add transportstep
 * add short
 * decoupler les deux lambda max et min (pour des intervalles non multiplcativement symétriques)
