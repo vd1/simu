@@ -22,6 +22,7 @@ y=df['return']
 coefficients = np.polyfit(x, y, deg=1)
 slope, intercept = coefficients
 y_pred = slope * x + intercept
+y_bh = 0.5 * x
 
 # adjust returns (simulates a short)
 df['areturn'] = df['return'] - y_pred
@@ -29,7 +30,7 @@ df['areturn'] = df['return'] - y_pred
 # print(df)
 
 ############################
-# histogram of returns
+# 1. histogram of returns
 plt.figure(figsize=(10, 6))
 data = df['areturn']
 
@@ -54,7 +55,7 @@ plt.text(text_x, text_y, stats_text,
         horizontalalignment='right',
         verticalalignment='top')
 
-plt.title(f'Distribution of returns  (ratio = {gridstep}, vol = {vol})')
+plt.title(f'Distribution of adjusted returns  (ratio = {gridstep}, vol = {vol})')
 plt.xlabel('Returns')
 plt.ylabel('Frequency')
 plt.grid(True, linestyle='--', alpha=0.7)
@@ -62,7 +63,7 @@ plt.savefig(f'alms/png/return_distributions_{gridstep}_{vol}.png')
 # plt.show()
 
 ############################
-# scatter plot of relative price change vs adjusted returns
+# 2. scatter plot of relative price change vs adjusted returns
 plt.figure(figsize=(12, 8))
 # Plot points below y=0 in transparent red
 plt.scatter(df[df['areturn'] <= 0]['priceChange'], 
@@ -78,10 +79,11 @@ plt.scatter(df[df['areturn'] > 0]['priceChange'],
 plt.title(f'Joint Distribution of adjusted Returns vs relative price change (ratio = {gridstep}, vol = {vol})', fontsize=16)
 plt.xlabel('Relative Price change', fontsize=12)
 plt.ylabel('Return', fontsize=12)
+plt.grid(True, linestyle='--', alpha=0.7)
 plt.savefig(f'alms/png/areturn_vs_priceChange_scatter_{gridstep}_{vol}.png', dpi=300)
 
 ############################
-# scatter plot of relative price change vs returns
+# 3. scatter plot of relative price change vs (non adjusted) returns
 plt.figure(figsize=(12, 8))
 # Plot points below y=0 in transparent red
 plt.scatter(df[df['return'] <= 0]['priceChange'], 
@@ -95,13 +97,23 @@ plt.scatter(df[df['return'] > 0]['priceChange'],
 
 # add regression line
 plt.plot(x, y_pred, color='black', label='regression Line')
-plt.plot(x, y_pred, color='black', label='buy and hold')
+plt.plot(x, y_bh, color='black', linestyle = ":", label='buy and hold')
+text = f'''regression line:
+  slope {round(slope,5)}
+  intercept {round(intercept,5)}'''
+text_x = plt.xlim()[1] * 0.95
+text_y = plt.ylim()[1] * -0.5 
+plt.text(text_x, text_y, text,
+        bbox=dict(facecolor='grey', alpha=0.3, edgecolor='black'),
+        horizontalalignment='right',
+        verticalalignment='top')
+
 
 # Set title and labels
 plt.title(f'Joint Distribution of Returns vs relative price change (ratio = {gridstep}, vol = {vol})', fontsize=16)
 plt.xlabel('Relative Price change', fontsize=12)
 plt.ylabel('Return', fontsize=12)
-
+plt.grid(True, linestyle='--', alpha=0.7)
 plt.savefig(f'alms/png/return_vs_priceChange_scatter_{gridstep}_{vol}.png', dpi=300)
 
 # Print summary statistics
@@ -110,6 +122,6 @@ print(f'''regression line:
   intercept {round(intercept,5)}
 correlation adjusted return vs final price:
   {df['areturn'].corr(df['final price'])}''')
-print(df[['areturn','final price','up crossings','down crossings']].describe())
+print(df[['return','areturn','final price','up crossings','down crossings']].describe())
 # print(df['down crossings']/(df['up crossings']+df['down crossings']).describe())
 # Print correlation coefficient

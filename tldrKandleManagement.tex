@@ -193,23 +193,26 @@ Todo: implement the vanilla MM strategy and measure the payoff difference (MM sh
 
 Idea: 
 One can `neutralise' the deterministic part of the pay-off by adding 
-a correction of the type:
+a correction using the regression line with slope $b$, intercept $c$. 
+
+Write $\hbox{priceChange}$ for $\hbox{lastPrice}/\hbox{initialPrice} - 1$ ie the relative price change:
 \AR{
 (
-    \hbox{lastPrice},
+    \hbox{priceChange},
     \hbox{return}
 )
 &\longrightarrow&
     (\hbox{lastPrice},
-    \hbox{return} - \ba (\hbox{lastPrice}/\hbox{initialPrice} - 1))
+    \hbox{return} - (b\times\hbox{priceChange} + c))
 }
-If $\ba=1/2$ we are subtracting the price-deterministic return of the buy-and-hold
+If $b=1/2$, $c=0$ we are subtracting the price-deterministic return of the buy-and-hold
 where half of the initial cash is invested in the underlying.
-The exact offset, to be determined by fitting a regression line
-to a numerical experiment - will depend on $(r,\sig)$.
+The exact offsets $b$, $c$, to be determined by fitting a regression line
+to a numerical experiment depend on $(r,\sig)$.
 
-Concretely that can be done eg by shorting a certain amount $\ba$ of the underlying on a perp market,
-or by borrowing some of the underlying on a mending platform. 
+Concretely that can be done eg by shorting a certain amount $b$ of the underlying on a perp market,
+or by borrowing some of the underlying on a mending platform. What does $c$ represent: 
+the deterministic cost of financing the strategy (a sort of premium)?
 
 For large ratios $r>1.1$ (aka grid steps), 
 there are $<1$ crossings on average and the constant is very nearly $\ba =\frac12$ (ie a complete buy-and-hold).
@@ -239,6 +242,7 @@ and/or use an oracle at update time (eg consult another liquidity source).
 Let $\al\in[0,1]$ be the cash ratio (amount of initial capital kept in quote).
 Set $\al':=1-\al$ to simplify notations.
 
+\PRO 
 The total gain under a given price run is:
 \EQ{
 \Ga(\al) 
@@ -248,15 +252,52 @@ The total gain under a given price run is:
 }
 where $n_u$ is the number of up-crossings, $n_d$
 is the number of down-crossings along the price trajectories.
+\ORP
+Proof:
+We start with a capital $v^0_B$ of cash (base),
+of which we $\al v^0_B$, and buy $\al'v^0_B/p_0$ of base. 
 
-The crossing numbers are random and only depend on vol-and-grid, $\sig$ and $r$.
+Suppose an uc:
+\AR{
+\sMA{
+    \al'v^0_B/p_0
+    \\
+    \al v^0_B
+}
+&\longrightarrow^c&
+\sMA{
+    0
+    \\
+    \al v^0_B + (rp_0)\al'v^0_B/p_0
+}
+}
+Our new position is worth $v^0_B(\al+ \al'r)$,
+so a growth rate $\ga_u=\al+ \al'r$.
+
+Symmetrically for a dc:
+Suppose an uc:
+\AR{
+\sMA{
+    \al'v^0_B/p_0
+    \\
+    \al v^0_B
+}
+&\longrightarrow^d&
+\sMA{
+\al'v^0_B/p_0 + \al v^0_B/(p_0/r)\\0
+}
+}
+with a new position worth $v^0_B(\al'/r+\al )$, and we find $\ga_d=\al+ \al'/r$.
+\qed
+
+Note that the crossing numbers are random and only depend on vol-and-grid, $\sig$ and $r$.
 
 As
 $\al+\al' r>1$ (barycenter of $1$ and $r>1$), and  
 $\al+\al'/r<1$ (barycenter of $1$ and $1/r<1$),
-it follows that $\Ga>1$ ie the strategy is profitable for a given trajectory as soon as $n_u>n_d$.
+it follows that $\Ga>1$ ie the strategy is profitable along a given price trajectory as soon as $n_u>n_d$.
 
-In partcular if $\al=\al'=\frac12$, we get:
+In particular if $\al=\al'=\frac12$, we get:
 \AR{
 \log(\Ga(1/2)) 
 &=&
@@ -298,11 +339,37 @@ and therefore the initial wealth never changes. Ie (modulo fees and slippage), s
 
 \NB\ Euler-Maruyama for large $\sqrt{dt}$, large $\sig$ can lead to negative prices in a GBM;
 so better use the integral form. 
-\end{document}
 
-app.hellosign.com/t/8e4190ab9fd7cb8acf86180f2fb42c5011d23163?
-utm_campaign=multisigner_complete&
-utm_source=default&
-utm_channel=product_promo&
-utm_medium=email&
-utm_content=original
+\subsection{Other examples}
+The cost of financing a price-tracking Kandle (intercept) with $r=1.005$, $\sig=0.06$ is a negative return of 
+$\sim 4.6\%$. See the comparison with the B\&H line which has an intercept of zero (Fig.~\ref{1.005-0.06r}).
+The same cloud of points is represented with the regression line subtracted Fig.~\ref{1.005-0.06ar}.
+Fig.~\ref{1.005-0.06h} gives the distribution of adjusted returns. 
+
+It would be interesting to understand how the parameters of the regression line depend on $r$ and $\sig$.
+
+It seems one can decompose the return:
+\EQ{\label{slope}
+    % \hbox{return}
+    ret(r,\sig) &=& 
+    \mcl N(0,s(r,\sig)) + % random component
+    (c(r,\sig)+b(r,\sig)(\Da p/p_0)) % deterministic component
+}
+where $\Da p/p_0$ is the relative price change at the end of the price sequence.
+
+Todo: explore the coefficients in (Eq~\ref{slope}) above.
+
+\IG{400pt}
+{alms/png/return_vs_priceChange_scatter_1.005_0.06.png}
+{\label{1.005-0.06r} non-adjusted returns vs relative price change ($r=1.005$, $\sig=0.06$).}
+
+\IG{400pt}
+{alms/png/areturn_vs_priceChange_scatter_1.005_0.06.png}
+{\label{1.005-0.06ar} adjusted returns vs relative price change ($r=1.005$, $\sig=0.06$).}
+
+\IG{400pt}
+{alms/png/return_distributions_1.005_0.06.png}
+{\label{1.005-0.06h} histograms of adjusted returns ($r=1.005$, $\sig=0.06$).}
+
+
+\end{document}
