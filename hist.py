@@ -11,26 +11,24 @@ gridstep, vol = sys.argv[1], sys.argv[2]
 # Read the CSV data file
 df = pd.read_csv(f'alms/csv/test_sim_reset_2_offers_rep_{gridstep}_{vol}.csv',
                  sep=',')
-                #  skipinitialspace=True)  # Skip spaces after separator
 
 df.columns = df.columns.str.strip()
 
-# compute regression line
-x=df['final price']
+df['priceChange'] = df['final price']/1000 - 1
+
+# compute priceChange/return regression line
+x=df['priceChange']
 y=df['return']
 coefficients = np.polyfit(x, y, deg=1)
 slope, intercept = coefficients
-
-# Predicted values
 y_pred = slope * x + intercept
-# plt.plot(x, y_pred, color='black', label='Fitted Line')
 
 # adjust returns (simulates a short)
 df['areturn'] = df['return'] - y_pred
-
 # print(df.columns)
 # print(df)
 
+############################
 # histogram of returns
 plt.figure(figsize=(10, 6))
 data = df['areturn']
@@ -47,7 +45,7 @@ plt.plot(kde_x, kde(kde_x) * scale_factor, 'r-',
 
 mean = np.mean(data)
 std = np.std(data)
-stats_text = f'Mean: {mean:.2f}\nStd Dev: {std:.2f}'
+stats_text = f'Mean: {mean:.3f}\nStd Dev: {std:.3f}'
 # Position the text at the upper right corner
 text_x = plt.xlim()[1] * 0.95  # 95% of the way to the right
 text_y = plt.ylim()[1] * 0.95  # 95% of the way to the top
@@ -56,36 +54,55 @@ plt.text(text_x, text_y, stats_text,
         horizontalalignment='right',
         verticalalignment='top')
 
-# Set title and labels
 plt.title(f'Distribution of returns  (ratio = {gridstep}, vol = {vol})')
 plt.xlabel('Returns')
 plt.ylabel('Frequency')
-
-# Add grid
 plt.grid(True, linestyle='--', alpha=0.7)
-
-# Save the plot
 plt.savefig(f'alms/png/return_distributions_{gridstep}_{vol}.png')
 # plt.show()
 
+############################
+# scatter plot of relative price change vs adjusted returns
 plt.figure(figsize=(12, 8))
 # Plot points below y=0 in transparent red
-plt.scatter(df[df['areturn'] <= 0]['final price'], 
+plt.scatter(df[df['areturn'] <= 0]['priceChange'], 
             df[df['areturn'] <= 0]['areturn'], 
             color='red', alpha=0.4, label='Negative Return')
 
 # Plot points above y=0 in transparent green
-plt.scatter(df[df['areturn'] > 0]['final price'], 
+plt.scatter(df[df['areturn'] > 0]['priceChange'], 
             df[df['areturn'] > 0]['areturn'], 
             color='green', alpha=0.4, label='Positive Return')
 
 # Set title and labels
-plt.title(f'Joint Distribution of b&h adjusted Returns vs Final Price (ratio = {gridstep}, vol = {vol})', fontsize=16)
-plt.xlabel('Final Price', fontsize=12)
+plt.title(f'Joint Distribution of adjusted Returns vs relative price change (ratio = {gridstep}, vol = {vol})', fontsize=16)
+plt.xlabel('Relative Price change', fontsize=12)
+plt.ylabel('Return', fontsize=12)
+plt.savefig(f'alms/png/areturn_vs_priceChange_scatter_{gridstep}_{vol}.png', dpi=300)
+
+############################
+# scatter plot of relative price change vs returns
+plt.figure(figsize=(12, 8))
+# Plot points below y=0 in transparent red
+plt.scatter(df[df['return'] <= 0]['priceChange'], 
+            df[df['return'] <= 0]['return'], 
+            color='red', alpha=0.4, label='Negative Return')
+
+# Plot points above y=0 in transparent green
+plt.scatter(df[df['return'] > 0]['priceChange'], 
+            df[df['return'] > 0]['return'], 
+            color='green', alpha=0.4, label='Positive Return')
+
+# add regression line
+plt.plot(x, y_pred, color='black', label='regression Line')
+plt.plot(x, y_pred, color='black', label='buy and hold')
+
+# Set title and labels
+plt.title(f'Joint Distribution of Returns vs relative price change (ratio = {gridstep}, vol = {vol})', fontsize=16)
+plt.xlabel('Relative Price change', fontsize=12)
 plt.ylabel('Return', fontsize=12)
 
-# Save the plot
-plt.savefig(f'alms/png/return_vs_final_price_scatter_{gridstep}_{vol}.png', dpi=300)
+plt.savefig(f'alms/png/return_vs_priceChange_scatter_{gridstep}_{vol}.png', dpi=300)
 
 # Print summary statistics
 print(f'''regression line: 

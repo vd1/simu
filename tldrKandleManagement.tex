@@ -171,9 +171,9 @@ We see the green and red walls at the ends of the range near the $\pm20\%$ mark.
 There is also a \ttt{sim\_reset} variant where each time the price exits the range,
 the strategy re-enters with the same grid translated to the new current price.
 
-Fig.~\ref{simReset} shows an example where $r=1.02$, 1 offer on each side of the entry price, and a price GBM $\mu=0$, $\sig=0.08$.
-One sees that the peyoff shape is very different, and looks
-extremely similar to a buy and hold with half the cash invested (black line)
+Fig.~\ref{simReset} shows an example where $r=1.02$, with 1 offer on each side of the entry price, and a price GBM $\mu=0$, $\sig=0.08$.
+One sees that the payoff shape is very different, and looks
+similar to a buy and hold with half the cash invested (black line)
 with some low amount of noise induced by the path-dependent crossings.
 
 
@@ -184,16 +184,32 @@ with half the cash invested in the risky asset.}
 
 
 \subsection{Discussion of price-tracking Kandle (sim reset)}
-\NB[2] price-tracking Kandle is subtly different from a simple MM strategy which translates its price grid each time the price moves (at a given frequency),
-regardless of whether one of its offers was consumed or not. It would be interesting to simulate that as well. The difference is that in the 
-latter case even in the absence of crossing the price stays always $\eps$ away from the current price.
+Price-tracking Kandle is subtly different from a vanilla MM strategy which translates its price grid each time the price moves (at a given frequency),
+regardless of whether one of its offers was consumed or not. 
+The difference is that in the latter case even in the absence of crossing the price stays always $\eps$ away from the current price.
+% It would be interesting to simulate that as well. 
 
 Todo: implement the vanilla MM strategy and measure the payoff difference (MM should be better).
 
 Idea: 
-One can `neutralise' the determinstic part of the pay-off by adding $-\ba S_t$ (eg by shorting a certain amount $\ba$ of the underlying on a perp market,
-or by borrowing some of the underlying on a mending platform). The exact offset to be determined by fitting a regression line
+One can `neutralise' the deterministic part of the pay-off by adding 
+a correction of the type:
+\AR{
+(
+    \hbox{lastPrice},
+    \hbox{return}
+)
+&\longrightarrow&
+    (\hbox{lastPrice},
+    \hbox{return} - \ba (\hbox{lastPrice}/\hbox{initialPrice} - 1))
+}
+If $\ba=1/2$ we are subtracting the price-deterministic return of the buy-and-hold
+where half of the initial cash is invested in the underlying.
+The exact offset, to be determined by fitting a regression line
 to a numerical experiment - will depend on $(r,\sig)$.
+
+Concretely that can be done eg by shorting a certain amount $\ba$ of the underlying on a perp market,
+or by borrowing some of the underlying on a mending platform. 
 
 For large ratios $r>1.1$ (aka grid steps), 
 there are $<1$ crossings on average and the constant is very nearly $\ba =\frac12$ (ie a complete buy-and-hold).
