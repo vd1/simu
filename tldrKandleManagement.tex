@@ -1,4 +1,4 @@
-\documentclass[oneside]{article}
+\documentclass[oneside,12pt]{article}
 
 \frenchspacing
 
@@ -132,7 +132,7 @@ The csv file can be visualised using a python script called \ttt{hist.py} with s
 {\label{sim} On the $x$-axis the final price, on the $y$-axis the return. In red (green) realisations with a negative (positive) return.}
 
 \section{Simulation with exit}
-There is a variant, called \ttt{sim\_stopped}, that will stop if the price down exits the range. So no need for specifying a duration.
+There is a variant, called \ttt{sim\_stopped}, that will stop if the price exits the range. So no need to specify a duration.
 Either the simulation will stop (an return the time of exit and price), and it will run all the way to the
 end of the price series.
 
@@ -171,6 +171,13 @@ We see the green and red walls at the ends of the range near the $\pm20\%$ mark.
 There is also a \ttt{sim\_reset} variant where each time the price exits the range,
 the strategy re-enters with the same grid translated to the new current price.
 
+Note that price-tracking Kandle is subtly different from a vanilla MM strategy which translates its price grid each time the price moves (at a given frequency),
+regardless of whether one of its offers was consumed or not. 
+The difference is that in the latter case even in the absence of crossing the price stays always $\eps$ away from the current price.
+% It would be interesting to simulate that as well. 
+
+Todo: implement the vanilla MM strategy and measure the payoff difference (MM should be better).
+
 Fig.~\ref{simReset} shows an example where $r=1.02$, with 1 offer on each side of the entry price, and a price GBM $\mu=0$, $\sig=0.08$.
 One sees that the payoff shape is very different, and looks
 similar to a buy and hold with half the cash invested (black line)
@@ -184,18 +191,14 @@ with half the cash invested in the risky asset.}
 
 
 \subsection{Discussion of price-tracking Kandle (sim reset)}
-Price-tracking Kandle is subtly different from a vanilla MM strategy which translates its price grid each time the price moves (at a given frequency),
-regardless of whether one of its offers was consumed or not. 
-The difference is that in the latter case even in the absence of crossing the price stays always $\eps$ away from the current price.
-% It would be interesting to simulate that as well. 
-
-Todo: implement the vanilla MM strategy and measure the payoff difference (MM should be better).
 
 Idea: 
-One can `neutralise' the deterministic part of the pay-off by adding 
+There is a strong correlation between the last price and the pay-off (or return).
+One can `neutralise' the price-deterministic part of the pay-off by adding 
 a correction using the regression line with slope $b$, intercept $c$. 
 
-Write $\hbox{priceChange}$ for $\hbox{lastPrice}/\hbox{initialPrice} - 1$ ie the relative price change:
+Write $\hbox{priceChange}$ for the relative price change
+$\hbox{lastPrice}/\hbox{initialPrice} - 1$:
 \AR{
 (
     \hbox{priceChange},
@@ -215,8 +218,8 @@ or by borrowing some of the underlying on a mending platform. What does $c$ repr
 the deterministic cost of financing the strategy (a sort of premium)?
 
 For large ratios $r>1.1$ (aka grid steps), 
-there are $<1$ crossings on average and the constant is very nearly $\ba =\frac12$ (ie a complete buy-and-hold).
-As $r$ decreases, the mean number of crossings increases and the constant $\ba$ seem to decrease.
+there are $<1$ crossings on average and the constant is very nearly $b=\frac12$ (ie a complete buy-and-hold).
+As $r$ decreases, the mean number of crossings increases and the constant $b$, $c$ seem to decrease.
 To investigate empirically.
 
 \IG{200pt}
@@ -231,10 +234,6 @@ Todo: Try same experiments with multiple price points (not just 2)
 Can we combine sim with reset with a stop loss? Eg, is it useful to stop resetting after $k$ moves,
 or a certain minimum residual capital (or on a momentum signal)?
 
-A small remark: concretely, when ruining on chain, price-tracking Kandle does not have access to the next price (as the simulation does)
-only that $p_{n+1}>r p_n$;
-to correct this one can use multiple offers to improve the upper bound,
-and/or use an oracle at update time (eg consult another liquidity source).
 
 
 \subsection{Analysis of sim reset}
@@ -337,18 +336,16 @@ the output of which that strategy re-sells immmediately at same price (assuming 
 and therefore the initial wealth never changes. Ie (modulo fees and slippage), setting $\al=0$ amounts to not playing.
 
 
-\NB\ Euler-Maruyama for large $\sqrt{dt}$, large $\sig$ can lead to negative prices in a GBM;
-so better use the integral form. 
-
 \subsection{Other examples}
 The cost of financing a price-tracking Kandle (intercept) with $r=1.005$, $\sig=0.06$ is a negative return of 
 $\sim 4.6\%$. See the comparison with the B\&H line which has an intercept of zero (Fig.~\ref{1.005-0.06r}).
 The same cloud of points is represented with the regression line subtracted Fig.~\ref{1.005-0.06ar}.
-Fig.~\ref{1.005-0.06h} gives the distribution of adjusted returns. 
 
 It would be interesting to understand how the parameters of the regression line depend on $r$ and $\sig$.
 
-It seems one can decompose the return:
+Fig.~\ref{1.005-0.06h} gives the distribution of adjusted returns. 
+From the figure it seems one can decompose the return into a random normal component
+and a deterministic one:
 \EQ{\label{slope}
     % \hbox{return}
     ret(r,\sig) &=& 
@@ -359,17 +356,26 @@ where $\Da p/p_0$ is the relative price change at the end of the price sequence.
 
 Todo: explore the coefficients in (Eq~\ref{slope}) above.
 
-\IG{400pt}
+\IG{420pt}
 {alms/png/return_vs_priceChange_scatter_1.005_0.06.png}
 {\label{1.005-0.06r} non-adjusted returns vs relative price change ($r=1.005$, $\sig=0.06$).}
 
-\IG{400pt}
+\IG{420pt}
 {alms/png/areturn_vs_priceChange_scatter_1.005_0.06.png}
 {\label{1.005-0.06ar} adjusted returns vs relative price change ($r=1.005$, $\sig=0.06$).}
 
-\IG{400pt}
+\IG{420pt}
 {alms/png/return_distributions_1.005_0.06.png}
 {\label{1.005-0.06h} histograms of adjusted returns ($r=1.005$, $\sig=0.06$).}
 
+\subsection{Random remarks}
+
+A small remark: concretely, when running on chain, price-tracking Kandle does not have access to the next price (as the simulation does)
+only that $p_{n+1}>r p_n$;
+to correct this one can use multiple offers to improve the upper bound,
+and/or use an oracle at update time (eg consult another liquidity source).
+
+Euler-Maruyama for large $\sqrt{dt}$, large $\sig$ can lead to negative prices in a GBM;
+so better use the integral form. 
 
 \end{document}
