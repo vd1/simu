@@ -345,7 +345,7 @@ It would be interesting to understand how the parameters of the regression line 
 
 Fig.~\ref{1.005-0.06h} gives the distribution of adjusted returns. 
 From the figure it seems one can decompose the return into a random normal component
-and a deterministic one:
+and a deterministic one      :
 \EQ{\label{slope}
     % \hbox{return}
     ret(r,\sig) &=& 
@@ -358,7 +358,9 @@ Todo: explore the coefficients in (Eq~\ref{slope}) above.
 
 \IG{420pt}
 {alms/png/return_vs_priceChange_scatter_1.005_0.06.png}
-{\label{1.005-0.06r} non-adjusted returns vs relative price change ($r=1.005$, $\sig=0.06$).}
+{\label{1.005-0.06r} non-adjusted returns vs relative price change ($r=1.005$, $\sig=0.06$); the dotted line is the buy-and-hold
+return for half the capital invested in base ($\al=1/2$); the intercept of the regression line 
+is the cost of the strategy per unit of capital provided.}
 
 \IG{420pt}
 {alms/png/areturn_vs_priceChange_scatter_1.005_0.06.png}
