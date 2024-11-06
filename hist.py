@@ -122,6 +122,15 @@ print(f'''regression line:
   intercept {round(intercept,5)}
 correlation adjusted return vs final price:
   {df['areturn'].corr(df['final price'])}''')
-print(df[['return','areturn','final price','up crossings','down crossings']].describe())
+print(df[['return','areturn','final price']].describe())
 # print(df['down crossings']/(df['up crossings']+df['down crossings']).describe())
 # Print correlation coefficient
+
+
+# down- and up-crossings
+r = float(gridstep)
+ru = (1+r)/2
+rd = (1+1/r)/2
+print(f"{1/r}, {rd}, {ru}, {r}")
+df['growth rate'] = ru ** (df['up crossings']) * rd ** df['down crossings']
+print(df[['return','growth rate','up crossings','down crossings']].describe())

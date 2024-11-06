@@ -254,7 +254,8 @@ is the number of down-crossings along the price trajectories.
 \ORP
 Proof:
 We start with a capital $v^0_B$ of cash (base),
-of which we $\al v^0_B$, and buy $\al'v^0_B/p_0$ of base. 
+of which we keep $\al v^0_B$, 
+and buy $\al'v^0_B/p_0$ of base. 
 
 Suppose an uc:
 \AR{
@@ -274,7 +275,6 @@ Our new position is worth $v^0_B(\al+ \al'r)$,
 so a growth rate $\ga_u=\al+ \al'r$.
 
 Symmetrically for a dc:
-Suppose an uc:
 \AR{
 \sMA{
     \al'v^0_B/p_0
@@ -288,6 +288,12 @@ Suppose an uc:
 }
 with a new position worth $v^0_B(\al'/r+\al )$, and we find $\ga_d=\al+ \al'/r$.
 \qed
+
+\NB\ Importantly, in the proof above, we assume that the price at which we can resell what we buy 
+on a down-crossing is the same price at which we have bought. In reality, on a down-crossing
+$p_n>p_0/r>p_{n+1}$ and there is a loss factor proportional to $p_{n+1}/(p_0/r)<1$ (and, symmetrically
+one could have sold higher for an upcrossing with a ``manque à gagner'' proportional 
+to $p_{n+1}/(rp_0)$). In the simulations we do mark to market at the real price $p_{n+1}$.
 
 Note that the crossing numbers are random and only depend on vol-and-grid, $\sig$ and $r$.
 
