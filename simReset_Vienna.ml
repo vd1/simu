@@ -274,58 +274,6 @@ array2_to_csv ~filename:"tmp" ~array2:x
 ;; 
 *)
 
-
-(* --------------------- DATA --------------------- *)
-(* Loading price_series from a csv file into an array *)
-(* we read nb_lines after dropping the first one *)
-(* col = number of the column of interest *)
-let h ~number_of_lines:nb_lines ~filename:filename ~column:col ~splitchar:c = 
-  (* let  nb_lines =  Sys.command ("wc -l "^filename) in *)
-  (* print_int nb_lines; print_newline(); *)
-  let ic = open_in filename in
-  let _  = input_line ic in (* we ditch the first line of the file *)
-  let price_series = Array.make nb_lines 1.0 in
-  for i = 0 to (nb_lines - 1)
-    do 
-      let sline = input_line ic in
-      let esline = String.split_on_char c sline in
-      let current_price = List.nth esline col in 
-      price_series.(i) <- float_of_string current_price
-    done;
-  close_in ic;
-  price_series
-;;
-
-(* 
-let price_series  =  
-(* h 6748 "Kandle_benchmark_data.csv"  *)
-h ~number_of_lines:243780 ~filename:"csv/data_for_vd.csv" ~column:7 ~splitchar:','
-;; 
-*)
-
-(* 
-let ps = Array.sub price_series 0 3;;
-print_float ps.(0); print_newline ();
-print_float ps.(1); print_newline ();
-print_float ps.(999); print_newline ();
-;; 
-*)
-
-(* I = the index set for the various state elements, 
-   depends only on rangeMultiplier and step *)
-(* let build_index_set rangeMultiplier step = 
-  int_of_float (log(rangeMultiplier) /. log(step))  
-;; *)
-
-(* 
-log linear price subdivision 
-we build a multiplicatively symmetric price grid centered on p0
-NB: mid >= 1
-NB: total number of points = index_set >= 3
-NB: pmin >= p0 /. rangeMultiplier and pmax <= p0 *. rangeMultiplier, not necessarily equal because of rounding
-pmin/max = p0 * (gridstep ** +/- mid)
-*)
-
 (* --------------------- PRICE GRID --------------------- *)
 let generate_price_grid 
 ~half_number_of_price_points:mid 
@@ -392,16 +340,6 @@ let portfolio_A mid iia ask =
   !simres 
 ;;
 
-(* 
-let step =  1.1 in 
-for i = 0 to 10
-do
-let x = geo (step ** (float_of_int i)) step in 
-print_float(1_000_000_000_000. *. (x -. floor x));
-  print_newline()
-done
-;; 
-*)
 
 (* --------------------- KANDLE SIMULATION --------------------- *)
 (* 
