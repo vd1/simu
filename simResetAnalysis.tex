@@ -163,14 +163,17 @@ where $p_0(i)$ is the last touched price, ie the mid-point of the strategy right
 ith jump downwards.
 
 This brings a series of remarks:
-\\(1) The smaller the integration step $dt$, the smaller the loss factor.
+
+(1) The smaller the integration step $dt$, the smaller the loss factor.
 In the limit where $\da t\to0^+$, $\log(p_{i+1}/(p_0(i)/r))\to 0^-$, which is paradoxical!
 In that case $\da t$ has to be understood not just as an integration step,
 but as a market reactivity time or a lag vs a driving price 
-(eg a fee, maybe check the LvR paper to get a model of the lag)
-\\(2) one could always renege on bids (for a cost $q$), to mitigate the loss, 
+(eg a fee, maybe check the LvR paper to get a model of the lag~\cite{milionis2022automated})
+
+(2) one could always renege on bids (for a cost $q$), to mitigate the loss, 
 and just re-sell the [which corresponds to $\al=0$??]
-\\(3a) we can also forward the bids (if we do not want to renege), or 
+
+(3a) we can also forward the bids (if we do not want to renege), or 
 \\(3b) re-sell instantly on an other dex (the semi-book is closed for execution) 
 [we may want to generate the volume]
 
@@ -265,4 +268,18 @@ and/or use an oracle at update time (eg consult another liquidity source).
 Euler-Maruyama for large $\sqrt{dt}$, large $\sig$ can lead to negative prices in a GBM;
 so better use the integral form. 
 
+
+Why is $\Ga$ an easier notation for growth of mtm:
+\AR{
+\Ga &=& \prod_i \ga_i
+\\
+R &=& \prod_i (1+r_i) - 1
+\\
+% operation binaire
+r\star s &=& r+s+rs
+}
+if $r$, $s$ are small then $rs$ is negligible which explains why people talk with returns.
+
+\bibliographystyle{plain}
+\bibliography{bib}
 \end{document}
