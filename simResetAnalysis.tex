@@ -1,0 +1,268 @@
+\documentclass[oneside,12pt]{article}
+
+\frenchspacing
+\usepackage{geometry}                		
+\geometry{a4paper}                   	
+\geometry{landscape}
+% \geometry{columnsep=80pt}   
+% \geometry{paperwidth=1280pt}
+% \geometry{paperheight=720pt}        
+
+\usepackage[utf8]{inputenc}
+% \usepackage{fontspec}
+%\setmainfont{optima}
+
+\usepackage{ulem}
+
+\usepackage{color}
+\usepackage{amssymb}
+\usepackage{extarrows}
+
+\usepackage{/Users/V/icd/sty/vmacros}
+\usepackage{/Users/V/icd/sty/tokens}
+
+\usepackage[colorlinks=true]{hyperref}
+\usepackage{graphicx}				
+								
+
+\title{Analysis of price-tracking Kandle}
+\author{Mangrove Research}
+
+\begin{document}
+\maketitle
+We explore two ideas in this note:
+\\- extracting the deterministic impermanent loss term from the 
+(last price, return) joint distribution of a price-tracking Kandle
+\\- defining a closed-formula (dependent on number of crossings) for
+the return of a price-tracking Kandle
+
+% \section{Discussion of price-tracking Kandle (sim reset)}
+\section{Extracting the deterministic component}
+Idea: 
+For price-tracking Kandle, as for all variants,
+there is a strong correlation between the last price and the pay-off (or return).
+In other words so-called `impermanent loss' dominates the return.
+
+One can `neutralise' the price-deterministic part of the pay-off by adding 
+a correction using the regression line with slope $b$, intercept $c$. 
+
+Write $\hbox{priceChange}$ for the relative price change
+$\hbox{lastPrice}/\hbox{initialPrice} - 1$:
+\AR{
+(
+    \hbox{priceChange},
+    \hbox{return}
+)
+&\longrightarrow&
+    (\hbox{lastPrice},
+    \hbox{return} - (b\times\hbox{priceChange} + c))
+}
+If $b=1/2$, $c=0$ we are subtracting the price-deterministic return of the buy-and-hold
+where half of the initial cash is invested in the underlying.
+The exact offsets $b$, $c$, to be determined by fitting a regression line
+to a numerical experiment depend on $(r,\sig)$.
+
+Concretely that can be done eg by shorting a certain amount $b$ of the underlying on a perp market,
+or by borrowing some of the underlying on a mending platform. What does $c$ represent: 
+the deterministic cost of financing the strategy (a sort of premium)?
+
+For large ratios $r>1.1$ (aka grid steps), 
+there are $<1$ crossings on average and the constant is very nearly $b=\frac12$ (ie a complete buy-and-hold).
+As $r$ decreases, the mean number of crossings increases and the constant $b$, $c$ seem to decrease.
+To investigate empirically.
+
+\IG{200pt}
+{alms/png/return_vs_final_price_scatter_1.002_0.07.png}
+{adjusted return vs exit price (ratio = 1.002, vol = 0.07)}
+
+\QS[1] Is there for given $\sig$ a value $r\st(\sig)$ of $r$ that maximises the mean return? [similar to prior work done
+for plain Kandle]
+
+Todo: Try same experiments with multiple price points (not just 2)
+
+Can we combine sim with reset with a stop loss? Eg, is it useful to stop resetting after $k$ moves,
+or a certain minimum residual capital (or on a momentum signal)?
+
+
+
+\section{Analysis of sim reset}
+
+Let $\al\in[0,1]$ be the cash ratio (amount of initial capital kept in quote).
+Set $\al':=1-\al$ to simplify notations.
+
+\PRO 
+The total gain under a given price run is:
+\EQ{
+\Ga(\al) 
+&=&
+(\al+\al' r)^{n_u}
+(\al+\al'/r)^{n_d}
+}
+where $n_u$ is the number of up-crossings, $n_d$
+is the number of down-crossings along the price trajectories.
+\ORP
+Proof:
+We start with a capital $v^0_B$ of cash (base),
+of which we keep $\al v^0_B$, 
+and buy $\al'v^0_B/p_0$ of base. 
+
+Suppose an uc:
+\AR{
+\sMA{
+    \al'v^0_B/p_0
+    \\
+    \al v^0_B
+}
+&\longrightarrow^c&
+\sMA{
+    0
+    \\
+    \al v^0_B + (rp_0)\al'v^0_B/p_0
+}
+}
+Our new position is worth $v^0_B(\al+ \al'r)$,
+so a growth rate $\ga_u=\al+ \al'r$.
+
+Symmetrically for a dc:
+\AR{
+\sMA{
+    \al'v^0_B/p_0
+    \\
+    \al v^0_B
+}
+&\longrightarrow^d&
+\sMA{
+\al'v^0_B/p_0 + \al v^0_B/(p_0/r)\\0
+}
+}
+with a new position worth $v^0_B(\al'/r+\al )$, and we find $\ga_d=\al+ \al'/r$.
+\qed
+
+\NB\ Importantly, in the proof above, 
+we assume that on a down-crossing,
+the price at which one can resell what was just bought 
+is the same price at which we have bought $p_0/r$. 
+In reality, on a down-crossing the re-sell price may be lower:
+$p_n>p_0/r\geq p_{n+1}$. 
+There is a loss factor proportional to $p_{n+1}/(p_0/r)<1$ and we get 
+$\hat\ga_d=\ga_dp_{n+1}/(p_0/r)\leq \ga_d<1$ instead.
+Symmetrically,
+one could have sold higher on an upcrossing with a ``manque à gagner'' proportional 
+to $p_{n+1}/(rp_0)$. In the simulations we do mark to market at the real price $p_{n+1}$.
+So we get:
+\AR{
+    \log\hat\Gamma
+    &=&
+    N_u \log(\al+\al' r) +
+    N_d \log(\al+\al'/r) +
+    \ell(\mbf p, r)
+    \\
+    \ell(\mbf p, r) &=&  \sum_{i\dar} \log(p_{i+1}/(p_0(i)/r))
+}
+where $p_0(i)$ is the last touched price, ie the mid-point of the strategy right before the
+ith jump downwards.
+
+This brings a series of remarks:
+\\(1) The smaller the integration step $dt$, the smaller the loss factor.
+In the limit where $\da t\to0^+$, $\log(p_{i+1}/(p_0(i)/r))\to 0^-$, which is paradoxical!
+In that case $\da t$ has to be understood not just as an integration step,
+but as a market reactivity time or a lag vs a driving price 
+(eg a fee, maybe check the LvR paper to get a model of the lag)
+\\(2) one could always renege on bids (for a cost $q$), to mitigate the loss, 
+and just re-sell the [which corresponds to $\al=0$??]
+\\(3a) we can also forward the bids (if we do not want to renege), or 
+\\(3b) re-sell instantly on an other dex (the semi-book is closed for execution) 
+[we may want to generate the volume]
+
+Note that the crossing numbers are random and only depend on vol-and-grid, $\sig$ and $r$.
+
+As
+$\al+\al' r>1$ (barycenter of $1$ and $r>1$), and  
+$\al+\al'/r<1$ (barycenter of $1$ and $1/r<1$),
+it follows that $\Ga>1$ ie the strategy is profitable along a given price trajectory as soon as $n_u>n_d$.
+
+In particular if $\al=\al'=\frac12$, we get:
+\AR{
+\log(\Ga(1/2)) 
+&=&
+n_u \log(\frac{1+r}2) + 
+n_d \log(\frac{1+1/r}2)
+\\&=&
+N 
+(
+f_u \log(\frac{1+r}2) + 
+f_d \log(\frac{1+1/r}2)
+)
+}
+where in the last line we assume $N=n_u+n_d>0$ (not always true! especially for large ranges).
+
+The above is $>0$ iff:
+\AR{
+    f_d/f_u
+    &\leq&
+    \dfrac{\log(1+r) -\log 2}{\log 2-\log(1+r\mo)} =: k(r)
+}
+where $k(r)\geq 1$ is increasing and converges to $\log(1+r)/\log(2) -1$ for large $r$.
+This suggests that  larger $r$s are more likely to generate profits. To make sure we need
+to study how the $f_d$, $f_u$ distribution depends on $r$. It seems unlikey but it could be that larger $r$ are biased 
+downwards, ie $f_d/f_u$ is increasing function of $r$. [in sims up and down crossings 
+look equally likely]
+
+Todo: study the distribution of $f_u$ as a function of $r$ and $\sig$. [Also look at std]
+
+We can see the effect of changing $\al$.
+
+If $\al=0$ (base only), $\Ga(0) = r^{n_u-n_d}$. If we go full base,
+we win iff the process crosses more up than down.
+
+If $\al'=0$ (quote only), $\Ga(1) = 1$. Indeed if we never buy the underlying,
+all that can happen is the execution of a bid, 
+the output of which that strategy re-sells immmediately at same price (assuming no fees, no slippage),
+and therefore the initial wealth never changes. Ie (modulo fees and slippage), setting $\al=0$ amounts to not playing.
+
+
+\section{Examples}
+The cost of financing a price-tracking Kandle (intercept) with $r=1.005$, $\sig=0.06$ is a negative return of 
+$\sim 4.6\%$. See the comparison with the B\&H line which has an intercept of zero (Fig.~\ref{1.005-0.06r}).
+The same cloud of points is represented with the regression line subtracted Fig.~\ref{1.005-0.06ar}.
+
+It would be interesting to understand how the parameters of the regression line depend on $r$ and $\sig$.
+
+Fig.~\ref{1.005-0.06h} gives the distribution of adjusted returns. 
+From the figure it seems one can decompose the return into a random normal component
+and a deterministic one      :
+\EQ{\label{slope}
+    % \hbox{return}
+    ret(r,\sig) &=& 
+    \mcl N(0,s(r,\sig)) + % random component
+    (c(r,\sig)+b(r,\sig)(\Da p/p_0)) % deterministic component
+}
+where $\Da p/p_0$ is the relative price change at the end of the price sequence.
+
+Todo: explore the coefficients in (Eq~\ref{slope}) above.
+
+\IG{420pt}
+{alms/png/return_vs_priceChange_scatter_1.005_0.06.png}
+{\label{1.005-0.06r} non-adjusted returns vs relative price change ($r=1.005$, $\sig=0.06$); the dotted line is the buy-and-hold
+return for half the capital invested in base ($\al=1/2$); the intercept of the regression line 
+is the cost of the strategy per unit of capital provided.}
+
+\IG{420pt}
+{alms/png/areturn_vs_priceChange_scatter_1.005_0.06.png}
+{\label{1.005-0.06ar} adjusted returns vs relative price change ($r=1.005$, $\sig=0.06$).}
+
+\IG{420pt}
+{alms/png/return_distributions_1.005_0.06.png}
+{\label{1.005-0.06h} histograms of adjusted returns ($r=1.005$, $\sig=0.06$).}
+
+\section{Random remarks}
+
+A small remark: concretely, when running on chain, price-tracking Kandle does not have access to the next price (as the simulation does)
+only that $p_{n+1}>r p_n$;
+to correct this one can use multiple offers to improve the upper bound,
+and/or use an oracle at update time (eg consult another liquidity source).
+
+Euler-Maruyama for large $\sqrt{dt}$, large $\sig$ can lead to negative prices in a GBM;
+so better use the integral form. 
+
+\end{document}
