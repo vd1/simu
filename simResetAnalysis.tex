@@ -1,4 +1,4 @@
-\documentclass[oneside,12pt]{article}
+\documentclass[oneside,twocolumn,12pt]{article}
 
 \frenchspacing
 \usepackage{geometry}                		
@@ -53,7 +53,7 @@ $\hbox{lastPrice}/\hbox{initialPrice} - 1$:
     \hbox{priceChange},
     \hbox{return}
 )
-&\longrightarrow&
+&\longrightarrow&\\
     (\hbox{lastPrice},
     \hbox{return} - (b\times\hbox{priceChange} + c))
 }
@@ -71,7 +71,7 @@ there are $<1$ crossings on average and the constant is very nearly $b=\frac12$ 
 As $r$ decreases, the mean number of crossings increases and the constant $b$, $c$ seem to decrease.
 To investigate empirically.
 
-\IG{200pt}
+\IG{150pt}
 {alms/png/return_vs_final_price_scatter_1.002_0.07.png}
 {adjusted return vs exit price (ratio = 1.002, vol = 0.07)}
 
@@ -84,10 +84,44 @@ Can we combine sim with reset with a stop loss? Eg, is it useful to stop resetti
 or a certain minimum residual capital (or on a momentum signal)?
 
 
+\subsection{Examples}
+The cost of financing a price-tracking Kandle (intercept) with $r=1.005$, $\sig=0.06$ is a negative return of 
+$\sim 4.6\%$. See the comparison with the B\&H line which has an intercept of zero (Fig.~\ref{1.005-0.06r}).
+The same cloud of points is represented with the regression line subtracted Fig.~\ref{1.005-0.06ar}.
 
+It would be interesting to understand how the parameters of the regression line depend on $r$ and $\sig$.
+
+Fig.~\ref{1.005-0.06h} gives the distribution of adjusted returns. 
+From the figure it seems one can decompose the return into a random normal component
+and a deterministic one      :
+\EQ{\label{slope}
+    % \hbox{return}
+    ret(r,\sig) &=& 
+    \mcl N(0,s(r,\sig)) +\\ % random component
+    &&(c(r,\sig)+b(r,\sig)(\Da p/p_0)) \nonumber% deterministic component
+}
+where $\Da p/p_0$ is the relative price change at the end of the price sequence.
+
+Todo: explore the coefficients in (Eq~\ref{slope}) above.
+
+\IG{150pt}
+{alms/png/return_vs_priceChange_scatter_1.005_0.06.png}
+{\label{1.005-0.06r} non-adjusted returns vs relative price change ($r=1.005$, $\sig=0.06$); the dotted line is the buy-and-hold
+return for half the capital invested in base ($\al=1/2$); the intercept of the regression line 
+is the cost of the strategy per unit of capital provided.}
+
+\IG{150pt}
+{alms/png/areturn_vs_priceChange_scatter_1.005_0.06.png}
+{\label{1.005-0.06ar} adjusted returns vs relative price change ($r=1.005$, $\sig=0.06$).}
+
+\IG{150pt}
+{alms/png/return_distributions_1.005_0.06.png}
+{\label{1.005-0.06h} histograms of adjusted returns ($r=1.005$, $\sig=0.06$).}
 \section{Analysis of sim reset}
 
-Let $\al\in[0,1]$ be the cash ratio (amount of initial capital kept in quote).
+Let $\al\in[0,1]$ be the fraction of the initial capital kept in quote (cash ratio).
+Setting $\al=0$ means that one has only asks; $\al=1$ means one has only bids.
+
 Set $\al':=1-\al$ to simplify notations.
 
 \PRO 
@@ -104,7 +138,7 @@ is the number of down-crossings along the price trajectories.
 Proof:
 We start with a capital $v^0_B$ of cash (base),
 of which we keep $\al v^0_B$, 
-and buy $\al'v^0_B/p_0$ of base. 
+and buy $\al'v^0_B/p_0$ of base; assuming the current price is $p_0$ (and no slippage). 
 
 Suppose an uc:
 \AR{
@@ -120,8 +154,8 @@ Suppose an uc:
     \al v^0_B + (rp_0)\al'v^0_B/p_0
 }
 }
-Our new position is worth $v^0_B(\al+ \al'r)$,
-so a growth rate $\ga_u=\al+ \al'r$.
+Our new position is worth $v^0_B\ga_u$,
+with the growth rate $\ga_u=\al+ \al'r>1$.
 
 Symmetrically for a dc:
 \AR{
@@ -135,26 +169,30 @@ Symmetrically for a dc:
 \al'v^0_B/p_0 + \al v^0_B/(p_0/r)\\0
 }
 }
-with a new position worth $v^0_B(\al'/r+\al )$, and we find $\ga_d=\al+ \al'/r$.
+with a new position worth $v^0_B\ga_d$, with $\ga_d=\al+ \al'/r<1$.
 \qed
 
 \NB\ Importantly, in the proof above, 
 we assume that on a down-crossing,
-the price at which one can resell what was just bought 
-is the same price at which we have bought $p_0/r$. 
-In reality, on a down-crossing the re-sell price may be lower:
-$p_n>p_0/r\geq p_{n+1}$. 
-There is a loss factor proportional to $p_{n+1}/(p_0/r)<1$ and we get 
-$\hat\ga_d=\ga_dp_{n+1}/(p_0/r)\leq \ga_d<1$ instead.
-Symmetrically,
+we mark-to-market the new position at price $p_0/r$;
+ie the price at which base was just bought. 
+In reality, on a down-crossing the post-execution re-sell price may be lower:
+$p_n>p_0/r\geq p_{n+1}$. (In which case we have over-bought so to speak.)
+Thus there is a loss factor proportional to $p_{n+1}/(p_0/r)<1$ and we get 
+a more realistic 
+\AR{\hat\ga_d=\ga_dp_{n+1}/(p_0/r)\leq \ga_d<1} 
+instead.
+
+[Symmetrically,
 one could have sold higher on an upcrossing with a ``manque à gagner'' proportional 
-to $p_{n+1}/(rp_0)$. In the simulations we do mark to market at the real price $p_{n+1}$.
-So we get:
+to $p_{n+1}/(rp_0)$. In the simulations we do mark to market at the real price $p_{n+1}$.]
+
+The corrected compound growth rate is therefore:
 \AR{
     \log\hat\Gamma
     &=&
-    N_u \log(\al+\al' r) +
-    N_d \log(\al+\al'/r) +
+    n_u \log(\al+\al' r) +
+    n_d \log(\al+\al'/r) +
     \ell(\mbf p, r)
     \\
     \ell(\mbf p, r) &=&  \sum_{i\dar} \log(p_{i+1}/(p_0(i)/r))
@@ -165,12 +203,13 @@ ith jump downwards.
 This brings a series of remarks:
 
 (1) The smaller the integration step $\da t$, the smaller the loss factor.\footnote{that is to say the
-there may be more small crossings is cheaper than fewer large one by oncavity of log}
+there may be more small crossings is cheaper than fewer large one by concavity of log}
 We should therefore incorporate $\da t$ as a bona fide parameter $\ell(\mbf p, r,\da t)$.
 In the limit where $\da t\to0^+$, $\log(p_{i+1}/(p_0(i)/r))\to 0^-$, which is paradoxical!
 In that case $\da t$ has to be understood not just as an integration step,
-but as a market reactivity time or a lag vs a driving price 
-(eg a fee, maybe check the LvR paper to get a model of the lag~\cite{milionis2022automated})
+but as a market reactivity time or a lag vs a driving price. Price can lag for economical reasons,
+eg a fee, or physical reasons such as the interblock time -eg $\da t=0.2 s$ on arbitrum-one.
+[eg a fee, ]maybe check the LvR paper to get a model of the lag~\cite{milionis2022automated}]
 
 (2) one could always renege on bids (for a cost $q$), to mitigate the loss, 
 and just re-sell the remaining inventory [a behaviour which corresponds to $\al=0$?]
@@ -217,6 +256,7 @@ look equally likely]
 
 Todo: study the distribution of $f_u$ as a function of $r$ and $\sig$. [Also look at std]
 
+\subsection{changing $\al$}
 We can see the effect of changing $\al$.
 
 If $\al=0$ (base only), $\Ga(0) = r^{n_u-n_d}$. If we go full base,
@@ -227,40 +267,6 @@ all that can happen is the execution of a bid,
 the output of which that strategy re-sells immmediately at same price (assuming no fees, no slippage),
 and therefore the initial wealth never changes. Ie (modulo fees and slippage), setting $\al=0$ amounts to not playing.
 
-
-\section{Examples}
-The cost of financing a price-tracking Kandle (intercept) with $r=1.005$, $\sig=0.06$ is a negative return of 
-$\sim 4.6\%$. See the comparison with the B\&H line which has an intercept of zero (Fig.~\ref{1.005-0.06r}).
-The same cloud of points is represented with the regression line subtracted Fig.~\ref{1.005-0.06ar}.
-
-It would be interesting to understand how the parameters of the regression line depend on $r$ and $\sig$.
-
-Fig.~\ref{1.005-0.06h} gives the distribution of adjusted returns. 
-From the figure it seems one can decompose the return into a random normal component
-and a deterministic one      :
-\EQ{\label{slope}
-    % \hbox{return}
-    ret(r,\sig) &=& 
-    \mcl N(0,s(r,\sig)) + % random component
-    (c(r,\sig)+b(r,\sig)(\Da p/p_0)) % deterministic component
-}
-where $\Da p/p_0$ is the relative price change at the end of the price sequence.
-
-Todo: explore the coefficients in (Eq~\ref{slope}) above.
-
-\IG{420pt}
-{alms/png/return_vs_priceChange_scatter_1.005_0.06.png}
-{\label{1.005-0.06r} non-adjusted returns vs relative price change ($r=1.005$, $\sig=0.06$); the dotted line is the buy-and-hold
-return for half the capital invested in base ($\al=1/2$); the intercept of the regression line 
-is the cost of the strategy per unit of capital provided.}
-
-\IG{420pt}
-{alms/png/areturn_vs_priceChange_scatter_1.005_0.06.png}
-{\label{1.005-0.06ar} adjusted returns vs relative price change ($r=1.005$, $\sig=0.06$).}
-
-\IG{420pt}
-{alms/png/return_distributions_1.005_0.06.png}
-{\label{1.005-0.06h} histograms of adjusted returns ($r=1.005$, $\sig=0.06$).}
 
 \section{Random remarks}
 
