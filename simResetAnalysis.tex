@@ -164,18 +164,22 @@ ith jump downwards.
 
 This brings a series of remarks:
 
-(1) The smaller the integration step $dt$, the smaller the loss factor.
+(1) The smaller the integration step $\da t$, the smaller the loss factor.\footnote{that is to say the
+there may be more small crossings is cheaper than fewer large one by oncavity of log}
+We should therefore incorporate $\da t$ as a bona fide parameter $\ell(\mbf p, r,\da t)$.
 In the limit where $\da t\to0^+$, $\log(p_{i+1}/(p_0(i)/r))\to 0^-$, which is paradoxical!
 In that case $\da t$ has to be understood not just as an integration step,
 but as a market reactivity time or a lag vs a driving price 
 (eg a fee, maybe check the LvR paper to get a model of the lag~\cite{milionis2022automated})
 
 (2) one could always renege on bids (for a cost $q$), to mitigate the loss, 
-and just re-sell the [which corresponds to $\al=0$??]
+and just re-sell the remaining inventory [a behaviour which corresponds to $\al=0$?]
 
-(3a) we can also forward the bids (if we do not want to renege), or 
+(3a) we can also forward the bids (if we do not want to renege) but we are going to pay the same
+$\log(p_{i+1}/(p_0(i)/r))$ or about where $p_{i+1}$ is now the price on the source dex, or 
 \\(3b) re-sell instantly on an other dex (the semi-book is closed for execution) 
 [we may want to generate the volume]
+
 
 Note that the crossing numbers are random and only depend on vol-and-grid, $\sig$ and $r$.
 
