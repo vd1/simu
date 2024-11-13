@@ -6,10 +6,10 @@ import sys
 import numpy as np
 
 # print(sys.argv[1:])
-gridstep, vol = sys.argv[1], sys.argv[2]
+gridstep, vol, deltaT = sys.argv[1], sys.argv[2], sys.argv[3]
 
 # Read the CSV data file
-df = pd.read_csv(f'alms/csv/test_sim_reset_2_offers_rep_{gridstep}_{vol}.csv',
+df = pd.read_csv(f'alms/csv/test_sim_reset_2_offers_rep_{gridstep}_{vol}_{deltaT}.csv',
                  sep=',')
 
 df.columns = df.columns.str.strip()
@@ -55,11 +55,11 @@ plt.text(text_x, text_y, stats_text,
         horizontalalignment='right',
         verticalalignment='top')
 
-plt.title(f'Distribution of adjusted returns  (ratio = {gridstep}, vol = {vol})')
+plt.title(f'Distribution of adjusted returns  (ratio = {gridstep}, vol = {vol}, deltaT = {deltaT})')
 plt.xlabel('Returns')
 plt.ylabel('Frequency')
 plt.grid(True, linestyle='--', alpha=0.7)
-plt.savefig(f'alms/png/return_distributions_{gridstep}_{vol}.png')
+plt.savefig(f'alms/png/return_distributions_{gridstep}_{vol}_{deltaT}.png')
 # plt.show()
 
 ############################
@@ -76,11 +76,11 @@ plt.scatter(df[df['areturn'] > 0]['priceChange'],
             color='green', alpha=0.4, label='Positive Return')
 
 # Set title and labels
-plt.title(f'Joint Distribution of adjusted Returns vs relative price change (ratio = {gridstep}, vol = {vol})', fontsize=16)
+plt.title(f'Joint Distribution of adjusted Returns vs relative price change (ratio = {gridstep}, vol = {vol}, deltaT = {deltaT})', fontsize=16)
 plt.xlabel('Relative Price change', fontsize=12)
 plt.ylabel('Return', fontsize=12)
 plt.grid(True, linestyle='--', alpha=0.7)
-plt.savefig(f'alms/png/areturn_vs_priceChange_scatter_{gridstep}_{vol}.png', dpi=300)
+plt.savefig(f'alms/png/areturn_vs_priceChange_scatter_{gridstep}_{vol}_{deltaT}.png', dpi=300)
 
 ############################
 # 3. scatter plot of relative price change vs (non adjusted) returns
@@ -110,11 +110,11 @@ plt.text(text_x, text_y, text,
 
 
 # Set title and labels
-plt.title(f'Joint Distribution of Returns vs relative price change (ratio = {gridstep}, vol = {vol})', fontsize=16)
+plt.title(f'Joint Distribution of Returns vs relative price change (ratio = {gridstep}, vol = {vol}, deltaT = {deltaT})', fontsize=16)
 plt.xlabel('Relative Price change', fontsize=12)
 plt.ylabel('Return', fontsize=12)
 plt.grid(True, linestyle='--', alpha=0.7)
-plt.savefig(f'alms/png/return_vs_priceChange_scatter_{gridstep}_{vol}.png', dpi=300)
+plt.savefig(f'alms/png/return_vs_priceChange_scatter_{gridstep}_{vol}_{deltaT}.png', dpi=300)
 
 # Print summary statistics
 print(f'''regression line: 

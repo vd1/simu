@@ -106,17 +106,22 @@ Todo: explore the coefficients in (Eq~\ref{slope}) above.
 
 \IG{150pt}
 {alms/png/return_vs_priceChange_scatter_1.005_0.06.png}
-{\label{1.005-0.06r} non-adjusted returns vs relative price change ($r=1.005$, $\sig=0.06$); the dotted line is the buy-and-hold
+{\label{1.005-0.06r} non-adjusted returns vs relative price change;
+parameters $r=1.005$, $\sig=0.06$, $\da t = 0.001$; 
+the dotted line is the buy-and-hold
 return for half the capital invested in base ($\al=1/2$); the intercept of the regression line 
 is the cost of the strategy per unit of capital provided.}
 
 \IG{150pt}
 {alms/png/areturn_vs_priceChange_scatter_1.005_0.06.png}
-{\label{1.005-0.06ar} adjusted returns vs relative price change ($r=1.005$, $\sig=0.06$).}
+{\label{1.005-0.06ar} adjusted returns vs relative price change; 
+parameters $r=1.005$, $\sig=0.06$, $\da t = 0.001$.}
 
 \IG{150pt}
 {alms/png/return_distributions_1.005_0.06.png}
-{\label{1.005-0.06h} histograms of adjusted returns ($r=1.005$, $\sig=0.06$).}
+{\label{1.005-0.06h} histograms of adjusted returns;
+parameters $r=1.005$, $\sig=0.06$, $\da t = 0.001$.}
+
 \section{Analysis of sim reset}
 
 Let $\al\in[0,1]$ be the fraction of the initial capital kept in quote (cash ratio).
@@ -202,14 +207,18 @@ ith jump downwards.
 
 This brings a series of remarks:
 
-(1) The smaller the integration step $\da t$, the smaller the loss factor.\footnote{that is to say the
-there may be more small crossings is cheaper than fewer large one by concavity of log}
+(1) The smaller the integration step $\da t$, the smaller the loss factor.\footnote{or rather
+more small crossings is cheaper than fewer large one by concavity of log}
 We should therefore incorporate $\da t$ as a bona fide parameter $\ell(\mbf p, r,\da t)$.
 In the limit where $\da t\to0^+$, $\log(p_{i+1}/(p_0(i)/r))\to 0^-$, which is paradoxical!
 In that case $\da t$ has to be understood not just as an integration step,
 but as a market reactivity time or a lag vs a driving price. Price can lag for economical reasons,
-eg a fee, or physical reasons such as the interblock time -eg $\da t=0.2 s$ on arbitrum-one.
-[eg a fee, ]maybe check the LvR paper to get a model of the lag~\cite{milionis2022automated}]
+eg a fee, or physical reasons such as the interblock time -eg $\da t=0.2s$ on arbitrum-one.\footnote{
+with such an interblck time, we have $288000$ blocks per day, so a minimum $\da t$ of $310^{-6}$}
+
+See Appendix \ref{choose} for results for various $\da t$s.
+
+[check the LvR paper to get a model of the lag~\cite{milionis2022automated}]
 
 (2) one could always renege on bids (for a cost $q$), to mitigate the loss, 
 and just re-sell the remaining inventory [a behaviour which corresponds to $\al=0$?]
@@ -220,7 +229,8 @@ $\log(p_{i+1}/(p_0(i)/r))$ or about where $p_{i+1}$ is now the price on the sour
 [we may want to generate the volume]
 
 
-Note that the crossing numbers are random and only depend on vol-and-grid, $\sig$ and $r$.
+Note that the crossing numbers are random and only depend on vol, grid, and delta t, $\sig$, $r$, $\da t$.
+
 
 As
 $\al+\al' r>1$ (barycenter of $1$ and $r>1$), and  
@@ -292,4 +302,29 @@ if $r$, $s$ are small then $rs$ is negligible which explains why people talk wit
 
 \bibliographystyle{plain}
 \bibliography{bib}
+
+\newpage 
+
+\appendix
+\section{Choosing $\da t$}\label{choose}
+
+As $\da t\to0^+$:
+\\- the number of crossings increases
+\\- the mean return increases
+\\- the std at fixed realtive price change decreases
+\\- it seems the pay-off converges to buy-and-hold
+
+\IGS{300pt}
+{alms/png/return_vs_priceChange_scatter_1.005_0.06_0.001.png}
+{parameters $r=1.005$, $\sig=0.06$, $\da t = 0.001$}
+
+\IGS{300pt}
+{alms/png/return_vs_priceChange_scatter_1.005_0.06_0.0001.png}
+{parameters $r=1.005$, $\sig=0.06$, $\da t = 0.0001$}
+
+\IGS{300pt}
+{alms/png/return_vs_priceChange_scatter_1.005_0.06_0.00001.png}
+{parameters $r=1.005$, $\sig=0.06$, $\da t = 0.00001$}
+
+
 \end{document}
