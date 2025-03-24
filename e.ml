@@ -710,7 +710,8 @@ let generate_price_grid
    si on a aussi acces au current_volatility et la Garchery map step(current_vol)
    on peut aussi mettre à jour le step
 
-   NB2: on peut eviter de regenerer la meme grille de prix quand on fait tire 10000 realisations contre les mêmes parametres
+   NB2: on peut eviter de regenerer la meme grille de prix quand on tire 
+   10000 realisations contre les mêmes parametres
 *)
 
 (* 
@@ -748,14 +749,16 @@ done
 
 (* --------------------- POPULATE BOOK --------------------- *)
 (* capital in A and B is distributed uniformly on both sides *)
-(* ask volumes are constant = qA/nb_asks *)
-(* bid volumes are decreasing = qB/nb_asks * 1/pg(i) *)
-(* we don't fill the central slot = hole *)  
+(* asks are in constant "gives" ie Kandle sells qA/nbAsks at each ask *)
+(* bids are in constant "gives" as well, Kandle gives qB/nbBids for qB/nbAsks * 1/pg(i) *)
+(* we don't fill the central slot = hole *)
 let populate_book 
 ~half_number_of_price_points:mid 
 ~baseAmount:qA 
 ~quoteAmount:qB 
 ~price_grid:pg = 
+(* TODO: check that mid > 0 sinon on a un livre vide avec juste un trou! *)
+    assert(mid > 0);
     let index_set  = 2 * mid + 1 in
     let bid = Array.make index_set 0. 
     and ask = Array.make index_set 0. 
@@ -1069,7 +1072,7 @@ let test_rep () = test_sim_rep ~repeats:100 ~duration:1. ~numberOfPoints:10  ~gr
   *)
 
 (* SIM STOPPED *)
-(* same as sime above; but now we stop if the price exits the range *)
+(* same as sim above; but now we stop if the price exits the range *)
 let sim_stopped 
  ~rangeMultiplier:rangeMultiplier 
  ~gridstep:gridstep 

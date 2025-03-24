@@ -17,3 +17,5 @@ myenv/
 *.fdb_latexmk
 *.synctex.gz
 # *.pdf
+alms/
+jobo/
