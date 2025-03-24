@@ -6,10 +6,11 @@ import sys
 import numpy as np
 
 # print(sys.argv[1:])
-gridstep, vol, deltaT = sys.argv[1], sys.argv[2], sys.argv[3]
+duration, nbRep, ratio, vol, deltaT = sys.argv[1], sys.argv[2], sys.argv[3], sys.argv[4], sys.argv[5]
 
 # Read the CSV data file
-df = pd.read_csv(f'alms/csv/test_sim_reset_2_offers_rep_{gridstep}_{vol}_{deltaT}.csv',
+filestring = 'jobo/csv/test_sim_reset_4_offers'
+df = pd.read_csv(f'{filestring}_{duration}_{nbRep}_{ratio}_{vol}_{deltaT}.csv',
                  sep=',')
 
 df.columns = df.columns.str.strip()
@@ -30,7 +31,40 @@ df['areturn'] = df['return'] - y_pred
 # print(df)
 
 ############################
-# 1. histogram of returns
+# 1a. histogram of returns
+plt.figure(figsize=(10, 6))
+data = df['return']
+
+counts, bins, _ = plt.hist(data, bins=50, edgecolor='black', 
+                              label='Histogram', color='skyblue')
+
+kde_x = np.linspace(min(data), max(data), 200)
+kde = stats.gaussian_kde(data)
+# Scale factor = bin width * total number of samples
+scale_factor = (bins[1] - bins[0]) * len(data)
+plt.plot(kde_x, kde(kde_x) * scale_factor, 'r-', 
+        linewidth=2, label='KDE')
+
+mean = np.mean(data)
+std = np.std(data)
+stats_text = f'Mean: {mean:.3f}\nStd Dev: {std:.3f}'
+# Position the text at the upper right corner
+text_x = plt.xlim()[1] * 0.95  # 95% of the way to the right
+text_y = plt.ylim()[1] * 0.95  # 95% of the way to the top
+plt.text(text_x, text_y, stats_text,
+        bbox=dict(facecolor='white', alpha=0.8, edgecolor='none'),
+        horizontalalignment='right',
+        verticalalignment='top')
+
+plt.title(f'Distribution of returns  \n (duration = {duration}, ratio = {ratio}, vol = {vol}, deltaT = {deltaT})')
+plt.xlabel('Returns')
+plt.ylabel('Frequency')
+plt.grid(True, linestyle='--', alpha=0.7)
+plt.savefig(f'jobo/png/return_distributions_{duration}_{ratio}_{vol}_{deltaT}.png')
+# plt.show()
+
+############################
+# 1b. histogram of returns
 plt.figure(figsize=(10, 6))
 data = df['areturn']
 
@@ -55,11 +89,11 @@ plt.text(text_x, text_y, stats_text,
         horizontalalignment='right',
         verticalalignment='top')
 
-plt.title(f'Distribution of adjusted returns  (ratio = {gridstep}, vol = {vol}, deltaT = {deltaT})')
+plt.title(f'Distribution of adjusted returns  \n (duration = {duration}, ratio = {ratio}, vol = {vol}, deltaT = {deltaT})')
 plt.xlabel('Returns')
 plt.ylabel('Frequency')
 plt.grid(True, linestyle='--', alpha=0.7)
-plt.savefig(f'alms/png/return_distributions_{gridstep}_{vol}_{deltaT}.png')
+plt.savefig(f'jobo/png/areturn_distributions_{duration}_{ratio}_{vol}_{deltaT}.png')
 # plt.show()
 
 ############################
@@ -76,11 +110,11 @@ plt.scatter(df[df['areturn'] > 0]['priceChange'],
             color='green', alpha=0.4, label='Positive Return')
 
 # Set title and labels
-plt.title(f'Joint Distribution of adjusted Returns vs relative price change (ratio = {gridstep}, vol = {vol}, deltaT = {deltaT})', fontsize=16)
+plt.title(f'Joint Distribution of adjusted Returns vs relative price change \n (duration = {duration}, ratio = {ratio}, vol = {vol}, deltaT = {deltaT})', fontsize=16)
 plt.xlabel('Relative Price change', fontsize=12)
 plt.ylabel('Return', fontsize=12)
 plt.grid(True, linestyle='--', alpha=0.7)
-plt.savefig(f'alms/png/areturn_vs_priceChange_scatter_{gridstep}_{vol}_{deltaT}.png', dpi=300)
+plt.savefig(f'jobo/png/areturn_vs_priceChange_scatter_{duration}_{ratio}_{vol}_{deltaT}.png', dpi=300)
 
 ############################
 # 3. scatter plot of relative price change vs (non adjusted) returns
@@ -110,13 +144,14 @@ plt.text(text_x, text_y, text,
 
 
 # Set title and labels
-plt.title(f'Joint Distribution of Returns vs relative price change (ratio = {gridstep}, vol = {vol}, deltaT = {deltaT})', fontsize=16)
+plt.title(f'Joint Distribution of Returns vs relative price change \n (duration = {duration}, ratio = {ratio}, vol = {vol}, deltaT = {deltaT})', fontsize=16)
 plt.xlabel('Relative Price change', fontsize=12)
 plt.ylabel('Return', fontsize=12)
 plt.grid(True, linestyle='--', alpha=0.7)
-plt.savefig(f'alms/png/return_vs_priceChange_scatter_{gridstep}_{vol}_{deltaT}.png', dpi=300)
+plt.savefig(f'jobo/png/return_vs_priceChange_scatter_{duration}_{ratio}_{vol}_{deltaT}.png', dpi=300)
 
-# Print summary statistics
+############################
+# 4. Print summary statistics
 print(f'''regression line: 
   slope     {round(slope,5)}, 
   intercept {round(intercept,5)}
@@ -128,7 +163,7 @@ print(df[['return','areturn','final price']].describe())
 
 
 # down- and up-crossings
-r = float(gridstep)
+r = float(ratio)
 ru = (1+r)/2
 rd = (1+1/r)/2
 print(f"{1/r}, {rd}, {ru}, {r}")
